@@ -101,7 +101,8 @@ See [`MINTING.md`](MINTING.md) for what earns an id.
 
 ## Status
 
-**None of these 15 are filed upstream.** Five (`001`–`005`) are seeded in
-`pypy-review-toolkit`'s catalog as `PYPY-FUZZ-001..005`; `005` is additionally pinned to a
-source line by `pypy-review-findings` as `PYPYR-0001`, with `PYPYR-0002` recording a second
-route to the same site that this catalog's reproducer does not exercise.
+**None of these 15 are filed upstream.** All of them are mirrored as rows in
+`pypy-review-toolkit`'s `pypy_known_bugs.tsv`, so its `known-issues` command can
+cross-reference them against scanner output. `005` is additionally pinned to a source line by
+`pypy-review-findings` as `PYPYR-0001`, with `PYPYR-0002` recording a second route to the same
+site that this catalog's reproducer does not exercise.
