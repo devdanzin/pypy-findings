@@ -1,0 +1,40 @@
+PYPY-FUZZ-007 — `ThreadPool()` at an address-space limit
+==============================================================================
+
+Captured by scripts/capture_evidence.py. Reliability: sweeps; 6-7/10 at the right ballast, 0/10 one step either side.
+Needs an address-space limit: yes (the reproducer applies it itself).
+
+PyPy    : Python 3.11.15 (194f9f44b505, May 25 2026, 19:34:11) [PyPy 7.3.23 with GCC 10.2.1 20210130 (Red Hat 10.2.1-11)]
+CPython : Python 3.14.3 (main, Mar 3 2026, 14:59:53) [Clang 21.1.4 ]
+Command : <interpreter> -u repro.py
+
+The exit status below is the REPRODUCER DRIVER's, not the finding's. Most drivers exit
+1 when the bug reproduces; the differential-table drivers (PYPY-FUZZ-001/008) exit 0
+when every measured outcome matched what the record documents -- crashes included. Read
+the body, not the status.
+
+------------------------------------------------------------------------------
+PyPy — exit 1 (94.8s)
+------------------------------------------------------------------------------
+pypy 3.11.15
+RLIMIT_AS = 3072 MiB, 3 pools per run, 4 runs per point
+
+  ballast  300 MiB -> 2/4 SEGFAULT
+  ballast  400 MiB -> 3/4 SEGFAULT
+  ballast  525 MiB -> 1/4 SEGFAULT
+  ballast  725 MiB -> 1/4 SEGFAULT
+  ballast  750 MiB -> 1/4 SEGFAULT
+
+8 segfaults total. Re-run one of the crashing values by hand to see the
+faulthandler stack:
+    ( ulimit -v 3145728; /home/danzin/.local/share/uv/python/pypy-3.11.15-linux-x86_64-gnu/bin/pypy3.11 -c "import faulthandler,sys; faulthandler.enable();\
+        sys.argv=['x','<MiB>']; exec(open('/home/danzin/projects/pypy-findings/reports/PYPY-FUZZ-007-threadpool-at-address-space-limit-segv/repro.py').read())" )
+
+------------------------------------------------------------------------------
+CPython — exit 0 (48.4s)
+------------------------------------------------------------------------------
+cpython 3.14.3
+RLIMIT_AS = 3072 MiB, 3 pools per run, 4 runs per point
+
+No segfault anywhere in the sweep. Widen SWEEP, or lower ADDRESS_SPACE_MIB --
+the window depends on where this interpreter's own reservations sit.

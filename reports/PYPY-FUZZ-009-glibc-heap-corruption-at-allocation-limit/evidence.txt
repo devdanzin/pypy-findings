@@ -1,0 +1,50 @@
+PYPY-FUZZ-009 — glibc double free under allocation pressure
+==============================================================================
+
+Captured by scripts/capture_evidence.py. Reliability: 8/8 at 3072 MiB; two distinct windows (1536 and 3072), narrow.
+Needs an address-space limit: yes (the reproducer applies it itself).
+
+PyPy    : Python 3.11.15 (194f9f44b505, May 25 2026, 19:34:11) [PyPy 7.3.23 with GCC 10.2.1 20210130 (Red Hat 10.2.1-11)]
+CPython : Python 3.14.3 (main, Mar 3 2026, 14:59:53) [Clang 21.1.4 ]
+Command : <interpreter> -u repro.py
+
+The exit status below is the REPRODUCER DRIVER's, not the finding's. Most drivers exit
+1 when the bug reproduces; the differential-table drivers (PYPY-FUZZ-001/008) exit 0
+when every measured outcome matched what the record documents -- crashes included. Read
+the body, not the status.
+
+------------------------------------------------------------------------------
+PyPy — exit 1 (457.1s)
+------------------------------------------------------------------------------
+pypy 3.11.15
+running reduced_functools.py under a range of RLIMIT_AS caps, 3 runs each
+
+  cap  1024 MiB -> clean 3/3
+  cap  1536 MiB -> HEAP CORRUPTION 3/3
+  cap  2048 MiB -> clean 3/3
+  cap  2560 MiB -> clean 3/3
+  cap  3072 MiB -> HEAP CORRUPTION 3/3
+  cap  3584 MiB -> clean 3/3
+  cap  4096 MiB -> clean 3/3
+
+6 run(s) corrupted the C heap. PyPy's own exhaustion abort prints
+"out of memory: couldn't allocate the next arena"; glibc naming the
+corruption instead means the heap was already damaged.
+
+------------------------------------------------------------------------------
+CPython — exit 1 (1.0s)
+------------------------------------------------------------------------------
+cpython 3.14.3
+running reduced_functools.py under a range of RLIMIT_AS caps, 3 runs each
+
+  cap  1024 MiB -> HEAP CORRUPTION 3/3
+  cap  1536 MiB -> HEAP CORRUPTION 3/3
+  cap  2048 MiB -> HEAP CORRUPTION 3/3
+  cap  2560 MiB -> HEAP CORRUPTION 3/3
+  cap  3072 MiB -> HEAP CORRUPTION 3/3
+  cap  3584 MiB -> HEAP CORRUPTION 3/3
+  cap  4096 MiB -> HEAP CORRUPTION 3/3
+
+21 run(s) corrupted the C heap. PyPy's own exhaustion abort prints
+"out of memory: couldn't allocate the next arena"; glibc naming the
+corruption instead means the heap was already damaged.

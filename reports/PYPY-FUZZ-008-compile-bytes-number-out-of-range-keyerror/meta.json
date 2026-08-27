@@ -1,0 +1,29 @@
+{
+  "id": "PYPY-FUZZ-008",
+  "slug": "compile-bytes-number-out-of-range-keyerror",
+  "title": "The same tokenizer error path leaks an RPython `KeyError` for bytes that would encode above U+10FFFF",
+  "short_title": "`compile(b\"0\\xf5aa\")` leaks KeyError",
+  "kind": "systemerror-leak",
+  "signatures": [
+    "pypy_interpreter_pyparser.c:24992 (_maybe_raise_number_error)",
+    "rpython_rlib_unicodedata.c:542 (_db_index)"
+  ],
+  "one_line_repro": "compile(b\"0\\xf5aa\", \"<s>\", \"exec\")",
+  "repro": "repro.py",
+  "evidence": "evidence.txt",
+  "status": "reproduced",
+  "reliability": "deterministic (27/27 cells on PyPy, 0/27 on CPython)",
+  "needs_rlimit": false,
+  "reduced_from": "12805-line generated script (code.InteractiveConsole.runcode) -> 4 bytes",
+  "confirmed_build": "PyPy 7.3.23 (194f9f44b505, Python 3.11.15)",
+  "cpython_oracle": "CPython 3.14.3",
+  "found_by": [
+    "fusil, fleet_05 (broad stdlib)"
+  ],
+  "defect_class": "out-of-range-codepoint-from-invalid-utf8",
+  "shared_with_cpython": false,
+  "cpython_behavior": "raises a clean SyntaxError",
+  "prior_art": "Unreported. SECOND FACE of PYPY-FUZZ-001: the same function, a different call site, a different failure. Best reported together with it and with PYPY-FUZZ-012.",
+  "leak_signature": "SystemError: unexpected internal exception (please report a bug): <KeyError object ...>",
+  "notes": "Where PYPY-FUZZ-001's lead bytes assert, 0xF5-0xFF -- the bytes that could only ever encode a codepoint above U+10FFFF -- instead produce an out-of-range value that is handed to the unicodedata table, which raises KeyError. This face needs TWO further bytes after the lead byte; with fewer, the decoder hits end-of-input first and reports a clean SyntaxError. That is why `b\"0\\xff\"` -- the negative control in the first version of the PYPY-FUZZ-001 reproducer -- looked harmless: it was one byte short of a second bug."
+}

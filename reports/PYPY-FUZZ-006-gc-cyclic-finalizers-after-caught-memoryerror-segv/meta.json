@@ -1,0 +1,26 @@
+{
+  "id": "PYPY-FUZZ-006",
+  "slug": "gc-cyclic-finalizers-after-caught-memoryerror-segv",
+  "title": "Collecting cyclic finalizable objects after a CAUGHT `MemoryError` segfaults instead of raising",
+  "short_title": "gc.collect() after a caught MemoryError",
+  "kind": "segv",
+  "signatures": [],
+  "one_line_repro": "see repro.py -- fill the heap with cyclic __del__ objects, catch MemoryError, then gc.collect()",
+  "repro": "repro.py",
+  "evidence": "evidence.txt",
+  "status": "reproduced",
+  "reliability": "4/4 at a 3072 MiB cap in the shipped 5-cap sweep; 6/6 in a separate 6-run measurement. CPython 0/20 across the same five caps",
+  "needs_rlimit": true,
+  "reduced_from": "22125-line generated script -> 14 lines",
+  "confirmed_build": "PyPy 7.3.23 (194f9f44b505, Python 3.11.15)",
+  "cpython_oracle": "CPython 3.14.3",
+  "found_by": [
+    "fusil, fleet_03 (broad stdlib)"
+  ],
+  "defect_class": "crash-instead-of-clean-failure-at-allocation-limit",
+  "shared_with_cpython": false,
+  "cpython_behavior": "exits cleanly, 20/20 across five address-space caps",
+  "prior_art": "Unreported. NOT seeded in the toolkit catalog: it was added to the findings report after the five-bug version was handed over.",
+  "leak_signature": "Segmentation fault (and NOT PyPy's clean \"out of memory: couldn't allocate the next arena\" abort, whose absence is what distinguishes this from mere exhaustion)",
+  "notes": "The MemoryError is caught, so at that point the program is in a state Python defines as recoverable; collecting the cycles then crashes instead of raising. Every line of the 14 is load-bearing, measured 4 runs each: without `__del__` 0/4, without the reference cycle 0/4, without the gc.collect() loop 0/4, and -- the interesting one -- without an `import weakref` that is NEVER USED, 0/4. Substituting bytearrays, 20000 objects, 20000 dicts or `import functools` for that import does not restore it, so the threshold is in the GC heap's SHAPE, not its size. The shipped reproducer therefore SWEEPS a range of caps instead of hardcoding one."
+}

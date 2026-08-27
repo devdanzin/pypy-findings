@@ -1,0 +1,53 @@
+PYPY-FUZZ-008 — `compile(b"0\xf5aa")` leaks KeyError
+==============================================================================
+
+Captured by scripts/capture_evidence.py. Reliability: deterministic (27/27 cells on PyPy, 0/27 on CPython).
+Needs an address-space limit: no.
+
+PyPy    : Python 3.11.15 (194f9f44b505, May 25 2026, 19:34:11) [PyPy 7.3.23 with GCC 10.2.1 20210130 (Red Hat 10.2.1-11)]
+CPython : Python 3.14.3 (main, Mar 3 2026, 14:59:53) [Clang 21.1.4 ]
+Command : <interpreter> -u repro.py
+
+The exit status below is the REPRODUCER DRIVER's, not the finding's. Most drivers exit
+1 when the bug reproduces; the differential-table drivers (PYPY-FUZZ-001/008) exit 0
+when every measured outcome matched what the record documents -- crashes included. Read
+the body, not the status.
+
+------------------------------------------------------------------------------
+PyPy — exit 0 (11.4s)
+------------------------------------------------------------------------------
+pypy 3.11.15
+
+source         why                                  expected           compile            exec               eval             
+------------------------------------------------------------------------------------------------------------------------------
+b'0\x80'       digit + continuation byte            ABORT              ABORT              ABORT              ABORT            
+b'7\xc1'       another digit, another lead byte     ABORT              ABORT              ABORT              ABORT            
+b'1\xe0a'      overlong-capable 3-byte lead         ABORT              ABORT              ABORT              ABORT            
+b'0\xf5aa'     digit + out-of-range lead + 2 bytes  SystemError leak   SystemError leak   SystemError leak   SystemError leak 
+b'9\xffzz'     another digit, another lead          SystemError leak   SystemError leak   SystemError leak   SystemError leak 
+b'0\xf5'       same lead, too short                 clean SyntaxError  clean SyntaxError  clean SyntaxError  clean SyntaxError
+b'0\xe9aa'     valid 3-byte lead                    clean SyntaxError  clean SyntaxError  clean SyntaxError  clean SyntaxError
+b'a\x80'       letter instead of a digit            clean SyntaxError  clean SyntaxError  clean SyntaxError  clean SyntaxError
+b'\x80'        no number                            clean SyntaxError  clean SyntaxError  clean SyntaxError  clean SyntaxError
+
+All outcomes as documented. On CPython every cell reads 'clean SyntaxError'.
+
+------------------------------------------------------------------------------
+CPython — exit 1 (0.8s)
+------------------------------------------------------------------------------
+cpython 3.14.3
+
+source         why                                  expected           compile            exec               eval             
+------------------------------------------------------------------------------------------------------------------------------
+b'0\x80'       digit + continuation byte            ABORT              clean SyntaxError  clean SyntaxError  clean SyntaxError
+b'7\xc1'       another digit, another lead byte     ABORT              clean SyntaxError  clean SyntaxError  clean SyntaxError
+b'1\xe0a'      overlong-capable 3-byte lead         ABORT              clean SyntaxError  clean SyntaxError  clean SyntaxError
+b'0\xf5aa'     digit + out-of-range lead + 2 bytes  SystemError leak   clean SyntaxError  clean SyntaxError  clean SyntaxError
+b'9\xffzz'     another digit, another lead          SystemError leak   clean SyntaxError  clean SyntaxError  clean SyntaxError
+b'0\xf5'       same lead, too short                 clean SyntaxError  clean SyntaxError  clean SyntaxError  clean SyntaxError
+b'0\xe9aa'     valid 3-byte lead                    clean SyntaxError  clean SyntaxError  clean SyntaxError  clean SyntaxError
+b'a\x80'       letter instead of a digit            clean SyntaxError  clean SyntaxError  clean SyntaxError  clean SyntaxError
+b'\x80'        no number                            clean SyntaxError  clean SyntaxError  clean SyntaxError  clean SyntaxError
+
+15 cell(s) did not match the expected outcome -- this build differs from
+PyPy 7.3.23, or the bug is fixed.

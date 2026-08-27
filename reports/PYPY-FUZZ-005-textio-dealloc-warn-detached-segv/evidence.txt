@@ -1,0 +1,70 @@
+PYPY-FUZZ-005 — `_dealloc_warn` on a detached wrapper
+==============================================================================
+
+Captured by scripts/capture_evidence.py. Reliability: deterministic.
+Needs an address-space limit: no.
+
+PyPy    : Python 3.11.15 (194f9f44b505, May 25 2026, 19:34:11) [PyPy 7.3.23 with GCC 10.2.1 20210130 (Red Hat 10.2.1-11)]
+CPython : Python 3.14.3 (main, Mar 3 2026, 14:59:53) [Clang 21.1.4 ]
+Command : <interpreter> -u repro.py
+
+The exit status below is the REPRODUCER DRIVER's, not the finding's. Most drivers exit
+1 when the bug reproduces; the differential-table drivers (PYPY-FUZZ-001/008) exit 0
+when every measured outcome matched what the record documents -- crashes included. Read
+the body, not the status.
+
+------------------------------------------------------------------------------
+PyPy — SIGSEGV (1.2s)
+------------------------------------------------------------------------------
+pypy 3.11.15
+
+-- the buffered layer, guarded by 7bc330cce0f --
+  BufferedReader                     -> RuntimeError: calling _dealloc_warn' on a closed or detached reader
+  BufferedWriter                     -> RuntimeError: calling _dealloc_warn' on a closed or detached reader
+  BufferedRandom                     -> RuntimeError: calling _dealloc_warn' on a closed or detached reader
+
+-- every other TextIOWrapper method guards the detached buffer --
+  read                               -> ValueError: underlying buffer has been detached
+  write                              -> ValueError: underlying buffer has been detached
+  flush                              -> ValueError: underlying buffer has been detached
+  fileno                             -> ValueError: underlying buffer has been detached
+  seek                               -> ValueError: underlying buffer has been detached
+  close                              -> ValueError: underlying buffer has been detached
+
+-- merely CLOSED (not detached) is handled correctly too --
+  _dealloc_warn after close          -> AttributeError: '_io.BytesIO' object has no attribute '_dealloc_warn'
+
+-- DETACHED: the one unguarded path --
+  calling wrapper._dealloc_warn(None) now; expect SIGSEGV ...
+
+------------------------------------------------------------------------------
+CPython — exit 1 (0.0s)
+------------------------------------------------------------------------------
+cpython 3.14.3
+
+-- the buffered layer, guarded by 7bc330cce0f --
+  BufferedReader                     -> no error
+  BufferedWriter                     -> no error
+  BufferedRandom                     -> no error
+
+-- every other TextIOWrapper method guards the detached buffer --
+  read                               -> ValueError: underlying buffer has been detached
+  write                              -> ValueError: underlying buffer has been detached
+  flush                              -> ValueError: underlying buffer has been detached
+  fileno                             -> ValueError: underlying buffer has been detached
+  seek                               -> ValueError: underlying buffer has been detached
+  close                              -> ValueError: underlying buffer has been detached
+
+-- merely CLOSED (not detached) is handled correctly too --
+  _dealloc_warn after close          -> AttributeError: '_io.TextIOWrapper' object has no attribute '_dealloc_warn'
+
+-- DETACHED: the one unguarded path --
+  calling wrapper._dealloc_warn(None) now; expect SIGSEGV ...
+Traceback (most recent call last):
+  File "/home/danzin/projects/pypy-findings/reports/PYPY-FUZZ-005-textio-dealloc-warn-detached-segv/repro.py", line 98, in <module>
+    sys.exit(main())
+             ~~~~^^
+  File "/home/danzin/projects/pypy-findings/reports/PYPY-FUZZ-005-textio-dealloc-warn-detached-segv/repro.py", line 92, in main
+    wrapper._dealloc_warn(None)
+    ^^^^^^^^^^^^^^^^^^^^^
+AttributeError: '_io.TextIOWrapper' object has no attribute '_dealloc_warn'

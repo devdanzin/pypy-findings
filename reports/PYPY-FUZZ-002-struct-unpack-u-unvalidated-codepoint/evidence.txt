@@ -1,0 +1,98 @@
+PYPY-FUZZ-002 — `struct.unpack('u')` leaks OutOfRange
+==============================================================================
+
+Captured by scripts/capture_evidence.py. Reliability: deterministic.
+Needs an address-space limit: no.
+
+PyPy    : Python 3.11.15 (194f9f44b505, May 25 2026, 19:34:11) [PyPy 7.3.23 with GCC 10.2.1 20210130 (Red Hat 10.2.1-11)]
+CPython : Python 3.14.3 (main, Mar 3 2026, 14:59:53) [Clang 21.1.4 ]
+Command : <interpreter> -u repro.py
+
+The exit status below is the REPRODUCER DRIVER's, not the finding's. Most drivers exit
+1 when the bug reproduces; the differential-table drivers (PYPY-FUZZ-001/008) exit 0
+when every measured outcome matched what the record documents -- crashes included. Read
+the body, not the status.
+
+------------------------------------------------------------------------------
+PyPy — exit 1 (0.0s)
+------------------------------------------------------------------------------
+pypy 3.11.15
+
+-- the one-liner --
+  struct.unpack('u', b'abcd')  -> RPYTHON LEAK -> SystemError: unexpected internal exception (please report a bug): <OutO
+
+-- it is a codepoint-range check that is missing --
+  U+10FFFF -> ok ('\U0010ffff',)
+  U+110000 -> RPYTHON LEAK -> SystemError: unexpected internal exception (please report a bug): <OutO
+  U+110001 -> RPYTHON LEAK -> SystemError: unexpected internal exception (please report a bug): <OutO
+  U+FFFFFFFF -> RPYTHON LEAK -> SystemError: unexpected internal exception (please report a bug): <OutO
+  U+00D800 -> RPYTHON LEAK -> SystemError: unexpected internal exception (please report a bug): <OutO
+
+-- CPython removed the 'u' format in 3.9 and rejects it outright --
+  (there it raises struct.error: bad char in struct format)
+RPython traceback:
+  File "pypy_interpreter.c", line 53929, in BuiltinCode2_fastcall_2
+  File "pypy_module_struct.c", line 6725, in unpack
+  File "pypy_module_struct.c", line 1866, in _unpack
+  File "rpython_rlib_rstruct.c", line 4500, in interpret__v648___simple_call__function_i
+  File "pypy_module_struct.c", line 4600, in operate___rpython_rlib_rstruct_formatit_15
+  File "pypy_module_struct.c", line 4652, in UnpackFormatIterator_append_utf8
+  File "rpython_rlib.c", line 10474, in unichr_as_utf8
+RPython traceback:
+  File "pypy_interpreter.c", line 53929, in BuiltinCode2_fastcall_2
+  File "pypy_module_struct.c", line 6725, in unpack
+  File "pypy_module_struct.c", line 1866, in _unpack
+  File "rpython_rlib_rstruct.c", line 4500, in interpret__v648___simple_call__function_i
+  File "pypy_module_struct.c", line 4600, in operate___rpython_rlib_rstruct_formatit_15
+  File "pypy_module_struct.c", line 4652, in UnpackFormatIterator_append_utf8
+  File "rpython_rlib.c", line 10474, in unichr_as_utf8
+RPython traceback:
+  File "pypy_interpreter.c", line 53929, in BuiltinCode2_fastcall_2
+  File "pypy_module_struct.c", line 6725, in unpack
+  File "pypy_module_struct.c", line 1866, in _unpack
+  File "rpython_rlib_rstruct.c", line 4500, in interpret__v648___simple_call__function_i
+  File "pypy_module_struct.c", line 4600, in operate___rpython_rlib_rstruct_formatit_15
+  File "pypy_module_struct.c", line 4652, in UnpackFormatIterator_append_utf8
+  File "rpython_rlib.c", line 10474, in unichr_as_utf8
+RPython traceback:
+  File "pypy_interpreter.c", line 53929, in BuiltinCode2_fastcall_2
+  File "pypy_module_struct.c", line 6725, in unpack
+  File "pypy_module_struct.c", line 1866, in _unpack
+  File "rpython_rlib_rstruct.c", line 4500, in interpret__v648___simple_call__function_i
+  File "pypy_module_struct.c", line 4600, in operate___rpython_rlib_rstruct_formatit_15
+  File "pypy_module_struct.c", line 4652, in UnpackFormatIterator_append_utf8
+  File "rpython_rlib.c", line 10474, in unichr_as_utf8
+RPython traceback:
+  File "pypy_interpreter.c", line 53929, in BuiltinCode2_fastcall_2
+  File "pypy_module_struct.c", line 6725, in unpack
+  File "pypy_module_struct.c", line 1866, in _unpack
+  File "rpython_rlib_rstruct.c", line 4500, in interpret__v648___simple_call__function_i
+  File "pypy_module_struct.c", line 4600, in operate___rpython_rlib_rstruct_formatit_15
+  File "pypy_module_struct.c", line 4652, in UnpackFormatIterator_append_utf8
+  File "rpython_rlib.c", line 11352, in unichr_as_utf8
+RPython traceback:
+  File "pypy_interpreter.c", line 53929, in BuiltinCode2_fastcall_2
+  File "pypy_module_struct.c", line 6725, in unpack
+  File "pypy_module_struct.c", line 1866, in _unpack
+  File "rpython_rlib_rstruct.c", line 4500, in interpret__v648___simple_call__function_i
+  File "pypy_module_struct.c", line 4600, in operate___rpython_rlib_rstruct_formatit_15
+  File "pypy_module_struct.c", line 4652, in UnpackFormatIterator_append_utf8
+  File "rpython_rlib.c", line 10474, in unichr_as_utf8
+
+------------------------------------------------------------------------------
+CPython — exit 0 (0.0s)
+------------------------------------------------------------------------------
+cpython 3.14.3
+
+-- the one-liner --
+  struct.unpack('u', b'abcd')  -> error: bad char in struct format
+
+-- it is a codepoint-range check that is missing --
+  U+10FFFF -> error: bad char in struct format
+  U+110000 -> error: bad char in struct format
+  U+110001 -> error: bad char in struct format
+  U+FFFFFFFF -> error: bad char in struct format
+  U+00D800 -> error: bad char in struct format
+
+-- CPython removed the 'u' format in 3.9 and rejects it outright --
+  (there it raises struct.error: bad char in struct format)

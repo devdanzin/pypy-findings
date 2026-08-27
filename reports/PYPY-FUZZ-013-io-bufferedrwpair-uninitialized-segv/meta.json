@@ -1,0 +1,26 @@
+{
+  "id": "PYPY-FUZZ-013",
+  "slug": "io-bufferedrwpair-uninitialized-segv",
+  "title": "An uninitialized `_io.BufferedRWPair` segfaults through `.closed`, where every sibling type raises",
+  "short_title": "uninitialized `BufferedRWPair`",
+  "kind": "segv",
+  "signatures": [],
+  "one_line_repro": "import _io; _io.BufferedRWPair.__new__(_io.BufferedRWPair).closed",
+  "repro": "repro.py",
+  "evidence": "evidence.txt",
+  "status": "reproduced",
+  "reliability": "deterministic",
+  "needs_rlimit": false,
+  "reduced_from": "27 fleet dirs, all one signature -> 1 line",
+  "confirmed_build": "PyPy 7.3.23 (194f9f44b505, Python 3.11.15)",
+  "cpython_oracle": "CPython 3.14.3",
+  "found_by": [
+    "fusil, fleet_07 (--new-uninit variant)"
+  ],
+  "defect_class": "missing-sibling-guard",
+  "shared_with_cpython": false,
+  "cpython_behavior": "RuntimeError: the BufferedRWPair object is being garbage-collected",
+  "prior_art": "Unreported. Adjacent to two closed issues by this project's author -- pypy#5140 (StringIO segfault after an invalid `__init__` reinitialization) and pypy#5126 (StringIO in an invalid state) -- which are the SAME defect class on a different type. Both re-tested 2026-08-27 on 7.3.23: both FIXED. The fix did not propagate to BufferedRWPair.",
+  "leak_signature": "Segmentation fault",
+  "notes": "`T.__new__(T)` builds an instance without running `__init__`, which is ordinary Python and what pickle, copy and most deserializers do. Every other type in the family answers that state with `ValueError: I/O operation on uninitialized object` -- BufferedRandom, BufferedReader, BufferedWriter and TextIOWrapper all do. 1 of 8. `.closed` is the SINGLE ROOT: sweeping the full surface splits it cleanly, with the seven faulting operations (`.closed`, `iter()`, `list()`, for-loop, `.readlines()`, `.__enter__()`, `.isatty()`) all consulting `.closed` on the way in, while the nine that check the underlying object directly all raise properly. That makes it a one-line-shaped fix rather than a scattered family."
+}

@@ -1,0 +1,26 @@
+{
+  "id": "PYPY-FUZZ-011",
+  "slug": "memoryview-pypy-raw-address-released",
+  "title": "`memoryview._pypy_raw_address()` dereferences a RELEASED view where every sibling member raises",
+  "short_title": "`_pypy_raw_address()` on a released view",
+  "kind": "segv",
+  "signatures": [],
+  "one_line_repro": "m = memoryview(b\"\"); m.release(); m._pypy_raw_address()",
+  "repro": "repro.py",
+  "evidence": "evidence.txt",
+  "status": "reproduced",
+  "reliability": "deterministic",
+  "needs_rlimit": false,
+  "reduced_from": "fleet dirs -> 3 lines",
+  "confirmed_build": "PyPy 7.3.23 (194f9f44b505, Python 3.11.15)",
+  "cpython_oracle": "CPython 3.14.3",
+  "found_by": [
+    "fusil, fleet_06 (broad stdlib, --test-private)"
+  ],
+  "defect_class": "missing-sibling-guard",
+  "shared_with_cpython": false,
+  "cpython_behavior": "no such method -- `_pypy_raw_address` is PyPy-only",
+  "prior_art": "Unreported; no tracker issue mentions `_pypy_raw_address`. NOTE ON METHOD: an earlier keyword search reported 'no prior art' for several findings in this catalog and was wrong, because the relevant closed issues name different TYPES in their titles. This particular claim was re-checked directly.",
+  "leak_signature": "Segmentation fault",
+  "notes": "Measured over the whole public surface of `memoryview` on a released view, one member per subprocess: 14 members raise `ValueError: operation forbidden on released memoryview object`, 3 (`c_contiguous`, `contiguous`, `f_contiguous`) return a value without checking, and exactly one faults -- the one whose entire job is to hand back a raw pointer into the buffer. 1 of 19. Reachable from idiomatic code, not only an explicit `.release()`: `memoryview` is a context manager and `__exit__` releases, so the ordinary `with` form crashes identically. There is no CPython differential to offer, so the argument is internal consistency -- which is the stronger one: PyPy already decided what should happen here, implemented it 14 times, and missed the 15th."
+}

@@ -1,0 +1,1822 @@
+# FUSIL_BOILERPLATE_START
+
+# Record a Python-level backtrace if the target dies on a fatal signal.
+# Without this a SIGSEGV/SIGABRT leaves stdout ending at the last call line
+# with no indication of WHERE it died. That is worst for exactly the crashes
+# that need it most -- rare, threaded, load-dependent ones that do not
+# reproduce afterwards -- so capturing at crash time is the only chance.
+# Enabled first, before any other import, so a crash in the prelude is caught
+# too. Guarded: not every target interpreter ships a working faulthandler.
+try:
+    import faulthandler as _fusil_faulthandler
+    _fusil_faulthandler.enable()
+except Exception:
+    pass
+from gc import collect
+# NOTE: do NOT import `random` (the function) here -- it would shadow the
+# `random` module that embedded tricky-object code imports and uses as
+# `random.randint(...)`, turning those calls into AttributeError at module load.
+from random import choice, randint, sample, seed
+from sys import stderr, path as sys_path
+from os.path import dirname
+import ast
+import inspect
+import io
+import math
+import operator
+import time
+import sys
+from threading import Thread
+from unittest.mock import MagicMock
+import asyncio
+seed(842566650)
+
+try:
+    from string.templatelib import Interpolation, Template
+except ImportError:
+    pass
+print("Importing target module: importlib.resources._common", file=stderr)
+try:
+    import importlib.resources._common
+except ImportError as _fusil_import_error:
+    print("FUSIL: target module importlib.resources._common not importable (skipping):", repr(_fusil_import_error), file=stderr)
+    raise SystemExit(0)
+
+TRIVIAL_TYPES = {int, str, float, bool, bytes, tuple, list, dict, set, type(None),}
+def skip_trivial_type(obj_instance_or_class):
+    if type(obj_instance_or_class) in TRIVIAL_TYPES:
+        return True
+    return False
+
+
+_FUSIL_METHOD_BLACKLIST = frozenset({'__class__', '__enter__', '__imul__', '__ipow__', '__mul__', '__pow__', '__rmul__', '_acquire_lock', '_acquire_restore', '_handle_request_noblock', '_randbelow', '_randbelow_with_getrandbits', '_read', '_rehash', '_run_once', '_serve', '_shutdown', 'accept', 'acquire', 'acquire_lock', 'cmdloop', 'copyfileobj', 'get', 'get_request', 'handle_request', 'handle_request_noblock', 'prefix', 'raise_signal', 'repeat', 'run_forever', 'select', 'serve_forever', 'shutdown', 'sleep', 'test', 'tri', 'tril_indices', 'wait', 'zfill'})
+
+import sys
+from abc import ABCMeta
+from collections import Counter, OrderedDict, deque
+from queue import Queue
+from random import randint
+from string import printable
+
+try:
+    from _decimal import Decimal
+
+    has__decimal = True
+except ImportError:
+    from decimal import Decimal
+
+    has__decimal = False
+
+sequences = [Queue, deque, frozenset, list, set, str, tuple]
+bytes_ = [bytearray, bytes]
+numbers = [Decimal, complex, float, int]
+dicts = [Counter, OrderedDict, dict]
+# dicts = [OrderedDict, dict]
+bases = sequences + bytes_ + numbers + dicts + [object]
+
+large_num = 2**64
+
+
+class WeirdBase(ABCMeta):
+    def __hash__(self):
+        return randint(0, large_num)
+
+    def __eq__(self, other):
+        return False
+
+
+weird_instances = dict()
+weird_classes = dict()
+for cls in bases:
+
+    class weird_cls(cls, metaclass=WeirdBase):
+        def add(self, *args, **kwargs):
+            pass
+
+        append = clear = close = write = sort = reversed = add
+
+        def encode(self, *args, **kwargs):
+            return b""
+
+        def decode(self, *args, **kwargs):
+            return ""
+
+        format = getvalue = join = read = replace = strip = rstrip = decode
+
+        def get(self, *args, **kwargs):
+            return self
+
+        open = pop = update = get
+
+        def readlines(self, *args, **kwargs):
+            return [""]
+
+        rsplit = split = partition = rpartition = readlines
+
+        def items(self):
+            return {}.items()
+
+        def keys(self):
+            return {}.keys()
+
+        def values(self):
+            return {}.values()
+
+    weird_cls.__name__ = f"weird_{cls.__name__}"
+    weird_instances[f"weird_{cls.__name__}_empty"] = weird_cls()
+    weird_classes[f"weird_{cls.__name__}"] = weird_cls
+
+tricky_strs = (
+    chr(0),
+    chr(127),
+    chr(255),
+    chr(0x10FFFF),
+    "𝒜",
+    "\\x00" * 10,
+    "A" * (2**16),
+    "💻" * 2**10,
+)
+
+# We cannot create a Decimal larger than 10 ** 4300 with _pydecimal, only with _decimal
+max_str_digits_adjustment = 1 if has__decimal else -1
+# default_max_str_digits is CPython 3.11+; fall back to its 4300 default on interpreters
+# (older CPython, some PyPy) that don't expose it so this boilerplate stays importable.
+_default_max_str_digits = getattr(sys, "int_info", None)
+_default_max_str_digits = getattr(_default_max_str_digits, "default_max_str_digits", 4300)
+big_int_for_decimal = 10 ** (_default_max_str_digits + max_str_digits_adjustment)
+
+for cls in sequences:
+    weird_instances[f"weird_{cls.__name__}_single"] = weird_classes[f"weird_{cls.__name__}"]("a")
+    weird_instances[f"weird_{cls.__name__}_range"] = weird_classes[f"weird_{cls.__name__}"](
+        range(20)
+    )
+    weird_instances[f"weird_{cls.__name__}_types"] = weird_classes[f"weird_{cls.__name__}"](bases)
+    weird_instances[f"weird_{cls.__name__}_printable"] = weird_classes[f"weird_{cls.__name__}"](
+        printable
+    )
+    weird_instances[f"weird_{cls.__name__}_special"] = weird_classes[f"weird_{cls.__name__}"](
+        tricky_strs
+    )
+for cls in bytes_:
+    weird_instances[f"weird_{cls.__name__}_bytes"] = weird_classes[f"weird_{cls.__name__}"](
+        b"abcdefgh_" * 10
+    )
+for cls in numbers:
+    weird_instances[f"weird_{cls.__name__}_sys_maxsize"] = weird_classes[f"weird_{cls.__name__}"](
+        sys.maxsize
+    )
+    weird_instances[f"weird_{cls.__name__}_sys_maxsize_minus_one"] = weird_classes[
+        f"weird_{cls.__name__}"
+    ](sys.maxsize - 1)
+    weird_instances[f"weird_{cls.__name__}_sys_maxsize_plus_one"] = weird_classes[
+        f"weird_{cls.__name__}"
+    ](sys.maxsize + 1)
+    weird_instances[f"weird_{cls.__name__}_neg_sys_maxsize"] = weird_classes[
+        f"weird_{cls.__name__}"
+    ](-sys.maxsize)
+    weird_instances[f"weird_{cls.__name__}_2**63-1"] = weird_classes[f"weird_{cls.__name__}"](
+        2**63 - 1
+    )
+    weird_instances[f"weird_{cls.__name__}_2**63"] = weird_classes[f"weird_{cls.__name__}"](2**63)
+    weird_instances[f"weird_{cls.__name__}_2**63+1"] = weird_classes[f"weird_{cls.__name__}"](
+        2**63 + 1
+    )
+    weird_instances[f"weird_{cls.__name__}_-2**63+1"] = weird_classes[f"weird_{cls.__name__}"](
+        -(2**63) + 1
+    )
+    weird_instances[f"weird_{cls.__name__}_-2**63"] = weird_classes[f"weird_{cls.__name__}"](
+        -(2**63)
+    )
+    weird_instances[f"weird_{cls.__name__}_-2**63-1"] = weird_classes[f"weird_{cls.__name__}"](
+        -(2**63) - 1
+    )
+    weird_instances[f"weird_{cls.__name__}_2**31-1"] = weird_classes[f"weird_{cls.__name__}"](
+        2**31 - 1
+    )
+    weird_instances[f"weird_{cls.__name__}_2**31"] = weird_classes[f"weird_{cls.__name__}"](2**31)
+    weird_instances[f"weird_{cls.__name__}_2**31+1"] = weird_classes[f"weird_{cls.__name__}"](
+        2**31 + 1
+    )
+    weird_instances[f"weird_{cls.__name__}_-2**31+1"] = weird_classes[f"weird_{cls.__name__}"](
+        -(2**31) + 1
+    )
+    weird_instances[f"weird_{cls.__name__}_-2**31"] = weird_classes[f"weird_{cls.__name__}"](
+        -(2**31)
+    )
+    weird_instances[f"weird_{cls.__name__}_-2**31-1"] = weird_classes[f"weird_{cls.__name__}"](
+        -(2**31) - 1
+    )
+    if cls not in (float, complex) and hasattr(sys, "int_info"):
+        weird_instances[f"weird_{cls.__name__}_10**default_max_str_digits+1"] = weird_classes[
+            f"weird_{cls.__name__}"
+        ](big_int_for_decimal)
+for cls in dicts:
+    weird_instances[f"weird_{cls.__name__}_basic"] = weird_classes[f"weird_{cls.__name__}"](
+        {a: a for a in range(100)}
+    )
+    weird_instances[f"weird_{cls.__name__}_tricky_strs"] = weird_classes[f"weird_{cls.__name__}"](
+        {a: a for a in tricky_strs}
+    )
+
+
+# Class with a __del__ side effect to attack the JIT optimizer
+class FrameModifier:
+    def __init__(self, var_name, new_value):
+        # Store the name of the variable to target and its new value.
+        self.var_name = var_name
+        self.new_value = new_value
+        # Announce creation for debugging the generated script
+        print(f"  [FrameModifier created to target '{self.var_name}']", file=sys.stderr)
+
+    def __del__(self):
+        try:
+            # On destruction, get the calling frame (1 level up).
+            frame = sys._getframe(1)
+            # Maliciously modify the local variable in that frame.
+            print(
+                f"  [Side Effect] In __del__: Modifying '{self.var_name}' to {self.new_value!r}",
+                file=sys.stderr,
+            )
+            if self.var_name in frame.f_locals:
+                frame.f_locals[self.var_name] = self.new_value
+            elif (
+                self.var_name.split(".")[0] in frame.f_locals and self.var_name.count(".") == 1
+            ):  # instance_or_class.attribute
+                instance_or_class_str, attr_str = self.var_name.split(".")
+                setattr(frame.f_locals[instance_or_class_str], attr_str, self.new_value)
+            else:  # module.instance_or_class.attribute
+                module_str, instance_or_class_str, attr_str = self.var_name.split(".")
+                instance_or_class = getattr(frame.f_locals[module_str], instance_or_class_str)
+                setattr(instance_or_class, attr_str, self.new_value)
+        except Exception as e:
+            # Frame inspection can be tricky; don't crash in __del__.
+            print(f"  [Side Effect] Error in FrameModifier.__del__: {e}", file=sys.stderr)
+
+
+import abc
+import builtins
+import collections.abc
+import itertools
+import types
+import typing
+from functools import reduce
+from operator import or_
+
+abc_types = [cls for cls in abc.__dict__.values() if isinstance(cls, type)]
+builtins_types = [cls for cls in builtins.__dict__.values() if isinstance(cls, type)]
+collections_abc_types = [cls for cls in collections.abc.__dict__.values() if isinstance(cls, type)]
+collections_types = [cls for cls in collections.__dict__.values() if isinstance(cls, type)]
+itertools_types = [cls for cls in itertools.__dict__.values() if isinstance(cls, type)]
+types_types = [cls for cls in types.__dict__.values() if isinstance(cls, type)]
+typing_types = [cls for cls in typing.__dict__.values() if isinstance(cls, type)]
+
+all_types = (
+    abc_types
+    + builtins_types
+    + collections_abc_types
+    + collections_types
+    + itertools_types
+    + types_types
+    + typing_types
+)
+all_types = [t for t in all_types if not (isinstance(t, type) and issubclass(t, BaseException))]
+big_union = reduce(or_, all_types, int)
+
+
+import inspect
+import types
+
+tricky_cell = types.CellType(None)
+tricky_simplenamespace = types.SimpleNamespace(dummy=None, cell=tricky_cell)
+tricky_simplenamespace.dummy = tricky_simplenamespace
+try:
+    tricky_capsule = types.CapsuleType
+except AttributeError:
+    tricky_capsule = None
+tricky_module = types.ModuleType("tricky_module", "docs")
+tricky_module2 = types.ModuleType("tricky_module2\\x00", "docs\\x00")
+try:
+    tricky_genericalias = types.GenericAlias(list, (int,))
+except AttributeError:
+    tricky_genericalias = None
+
+tricky_dict = {}
+if tricky_capsule:
+    tricky_dict[tricky_capsule] = tricky_cell
+if tricky_module:
+    tricky_dict[tricky_module] = tricky_genericalias
+tricky_dict["tricky_dict"] = tricky_dict
+tricky_mappingproxy = types.MappingProxyType(tricky_dict)
+
+
+def tricky_function(*args, **kwargs):
+    if len(args) > 150:
+        raise RecursionError("Fuzzer controlled depth")
+    a = 1
+
+    def b(x=a):
+        v = x
+        return v
+
+    return tricky_function(*(args + (1,)), **kwargs)
+
+
+tricky_lambda = lambda *args, **kwargs: tricky_lambda(*args, **kwargs)
+tricky_classmethod = classmethod(tricky_lambda)
+tricky_staticmethod = staticmethod(tricky_lambda)
+tricky_property = property(tricky_lambda)
+tricky_code = tricky_lambda.__code__
+tricky_closure = tricky_function.__code__.co_freevars
+tricky_classmethod_descriptor = types.ClassMethodDescriptorType  # This is the type itself
+
+
+class TrickyDescriptor:
+    def __get__(self, obj, objtype=None):
+        return self
+
+    def __set__(self, obj, value):
+        try:
+            obj.__dict__["_value_descriptor"] = value
+        except AttributeError:
+            pass
+
+    def __delete__(self, obj):
+        try:
+            del obj.__dict__["_value_descriptor"]
+        except (AttributeError, KeyError):
+            pass
+
+
+class TrickyMeta(type):
+    @property
+    def __signature__(self):
+        raise AttributeError("Signature denied by TrickyMeta")
+
+    def __mro_entries__(self, bases):
+        return (object,)
+        # return super().__mro_entries__(bases)
+
+
+class TrickyClass(metaclass=TrickyMeta):
+    tricky_descriptor = TrickyDescriptor()
+
+    def __new__(cls, *args, **kwargs):
+        return super().__new__(cls)
+
+    def __init__(self, *args, **kwargs):
+        self._value_init = None
+
+    def __getattr__(self, name):
+        if name == "crash_on_getattr":
+            raise ValueError("getattr manipulated")
+        return self
+
+
+tricky_instance = TrickyClass()
+try:
+    tricky_frame = inspect.currentframe()
+    if tricky_frame:  # currentframe() can be None
+        # tricky_frame.f_builtins.update(tricky_dict)
+        tricky_frame.f_globals.update(tricky_dict)
+        tricky_frame.f_locals.update(tricky_dict)
+# Writing f_locals is a CPython frame detail (PEP 667 in 3.13); on interpreters where
+# it is a read-only snapshot the .update() can raise TypeError/AttributeError, not just
+# RuntimeError -- catch broadly so this best-effort frame pollution never aborts the script.
+except Exception:
+    tricky_frame = None
+
+
+try:
+    1 / 0
+except ZeroDivisionError as e:
+    tricky_traceback = e.__traceback__
+else:
+    tricky_traceback = None
+
+
+# tricky_generator = (x for x in itertools.count())
+tricky_list_with_cycle = [[]] * 6 + []
+tricky_list_with_cycle[0].append(tricky_list_with_cycle)
+tricky_list_with_cycle[-1].append(tricky_list_with_cycle)
+tricky_list_with_cycle.append(tricky_list_with_cycle)
+if tricky_list_with_cycle[0] and tricky_list_with_cycle[0][0] is tricky_list_with_cycle:
+    tricky_list_with_cycle[0][0].append(tricky_list_with_cycle)
+
+
+# --- Recursion-shape probes: map the unguarded-native-recursion crash class (RustPython #2796).
+# Each object re-enters a protocol on a PARTNER object, so the recursion crosses object boundaries
+# (mutual recursion, harder to short-circuit than plain self-recursion). CPython raises
+# RecursionError on the protocol call; an interpreter without a recursion guard on that native
+# path overflows its C/Rust stack -> segfault. Construction is cheap -- the recursion fires only
+# when the fuzzer exercises the named protocol (hash/eq/getitem/iter/repr/call) on the object.
+class _TrickyRecur:
+    def __init__(self, name):
+        self.name = name
+        self.partner = self  # rebound to a partner below for mutual recursion
+
+    def __hash__(self):
+        return hash(self.partner)
+
+    def __eq__(self, other):
+        return self.partner == other
+
+    def __getitem__(self, key):
+        return self.partner[key]
+
+    def __iter__(self):
+        return iter(self.partner)
+
+    def __repr__(self):
+        return repr(self.partner)
+
+    def __call__(self, *args, **kwargs):
+        return self.partner(*args, **kwargs)
+
+
+tricky_recur_a = _TrickyRecur("a")
+tricky_recur_b = _TrickyRecur("b")
+tricky_recur_a.partner = tricky_recur_b
+tricky_recur_b.partner = tricky_recur_a
+
+# Deep generic-alias nesting list[list[...list[T]...]] bottomed on a TypeVar so the parameter walk
+# actually recurses to collect it -- exercises the genericalias parameter-walk native path
+# (RustPython segfaulted in genericalias::make_parameters_from_slice). Bounded depth so construction
+# + a CPython repr stay well under the recursion limit; the native walk (and __getitem__
+# substitution) is the target. Falls back to a plain nested alias if TypeVar is unavailable.
+try:
+    from typing import TypeVar as _TrickyTypeVar
+
+    _TrickyGAT = _TrickyTypeVar("_TrickyGAT")
+    _tricky_ga = _TrickyGAT
+except Exception:
+    _tricky_ga = list
+try:
+    for _ in range(80):
+        _tricky_ga = list[_tricky_ga]
+    tricky_deep_genericalias = _tricky_ga
+except Exception:
+    tricky_deep_genericalias = None
+
+
+"""Exception-bomb objects: the protocol-level analogue of the OOM (allocation-failure) mode.
+
+The OOM allocator hook makes *allocations* fail deterministically; a bomb object makes a
+*dunder callback* fail -- exercising the large class of C code that calls a Python protocol
+slot (``__hash__``, ``__eq__``, ``__index__``, ``__len__``, ``__iter__``, ``__repr__``, ...)
+and then does an unguarded ``PyErr_Clear()`` or assumes the slot succeeded.
+
+Two knobs, both randomised at construction so repeated use across a run walks a wide slice of
+program state (the windowed-failure insight of the OOM sequence mode applied to protocol slots):
+
+* **delay** — succeed a random number of times, *then* raise. Delay 0 means "raise on first
+  use"; delay N means "corrupt/observe state for N calls, then fail" (the cross-call
+  "succeeded during insert, fails during lookup" shape that surfaces swallowed exceptions).
+* **exception** — the targeted bombs raise ``MemoryError`` (the highest-value target for the
+  unguarded-error-path bug class), while ``SuperBomb`` raises a *random* exception from a wide
+  set: spray-and-pray coverage of every protocol slot at once.
+
+This module is embedded verbatim into generated fuzzing scripts, so it must stay
+self-contained (only ``random`` + builtins) and import-safe.
+"""
+
+# Import the random *module* under a private alias. The generated script's boilerplate does
+# ``from random import ..., random``, which rebinds the bare name ``random`` to the random()
+# *function*; a private alias keeps this embedded code reaching the module's randint/choice.
+import random as _bomb_random
+
+# Weighted toward MemoryError (the unguarded-PyErr_Clear / swallowed-error bug class) but
+# spanning the exceptions C code is most likely to mishandle when a slot raises unexpectedly.
+_BOMB_EXCEPTIONS = (
+    MemoryError,
+    MemoryError,
+    MemoryError,
+    RecursionError,
+    OverflowError,
+    ValueError,
+    TypeError,
+    RuntimeError,
+    KeyError,
+    IndexError,
+    StopIteration,
+    SystemError,
+    # Only Exception subclasses belong here. BaseException types (KeyboardInterrupt,
+    # SystemExit, GeneratorExit) escape the generated `except Exception` handlers, so a bomb
+    # raising one aborts the whole session (SIGINT / nonzero exit) as a false crash rather
+    # than exercising the target's error handling.
+)
+
+
+def _bomb_exc(exc=None):
+    return exc if exc is not None else _bomb_random.choice(_BOMB_EXCEPTIONS)
+
+
+class _BombBase:
+    """Succeed a random ``delay`` (0..max_delay) times, then raise ``exc`` from armed slots."""
+
+    def __init__(self, max_delay=3, exc=MemoryError):
+        self._calls = 0
+        self._delay = _bomb_random.randint(0, max_delay)
+        self._exc = exc
+
+    def _fire(self):
+        self._calls += 1
+        if self._calls > self._delay:
+            raise _bomb_exc(self._exc)("fusil bomb")
+
+
+class HashBomb(_BombBase):
+    """__hash__ raises after the delay -- hits dict/set insert & lookup error paths."""
+
+    def __hash__(self):
+        self._fire()
+        return 42
+
+    def __eq__(self, other):
+        return self is other
+
+
+class EqBomb(_BombBase):
+    """Comparison raises; stays hashable and looks sequence-ish to pass pre-checks."""
+
+    def __eq__(self, other):
+        self._fire()
+        return NotImplemented
+
+    def __ne__(self, other):
+        self._fire()
+        return NotImplemented
+
+    def __hash__(self):
+        return 0
+
+    def __iter__(self):
+        return iter(())
+
+    def __len__(self):
+        return 0
+
+
+class IndexBomb(_BombBase):
+    """Numeric coercion raises -- hits sequence-index / int-conversion error paths."""
+
+    def __index__(self):
+        self._fire()
+        return 1
+
+    def __int__(self):
+        self._fire()
+        return 1
+
+    def __float__(self):
+        self._fire()
+        return 1.0
+
+
+class LenBomb(_BombBase):
+    """__len__ raises but __iter__ works -- length-then-iterate mismatch."""
+
+    def __len__(self):
+        self._fire()
+        return 3
+
+    def __iter__(self):
+        return iter([1, 2, 3])
+
+
+class LyingLen:
+    """__len__ reports a huge size (over-allocation) but yields few items."""
+
+    def __len__(self):
+        return 1_000_000
+
+    def __iter__(self):
+        return iter([1, 2, 3])
+
+
+class ReprBomb(_BombBase):
+    """__repr__/__str__ raise -- hits error-formatting and logging paths in C."""
+
+    def __repr__(self):
+        self._fire()
+        return "<ReprBomb>"
+
+    __str__ = __repr__
+
+
+class FailingIterator:
+    """Yields a random few items, then raises mid-iteration (partial-mutation on
+    extend/update/list()/dict-from-pairs)."""
+
+    def __init__(self, max_items=4, exc=None):
+        self._i = 0
+        self._n = _bomb_random.randint(0, max_items)
+        self._exc = exc
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        if self._i >= self._n:
+            raise _bomb_exc(self._exc)("fusil iter bomb")
+        self._i += 1
+        return self._i
+
+
+# --- Reentrant-mutation bombs: MUTATE the container mid-operation (not just raise) --------
+#
+# The exception bombs above make a protocol slot RAISE; these make it MUTATE the very
+# container the running C operation is iterating -- the reentrancy / use-after-free class.
+# When a C sequence/mapping routine borrows a container's internal storage (``ob_item`` array,
+# hash-table ``entries``) and then calls back into Python -- to compare (``__eq__``/``__lt__``),
+# hash (``__hash__``), or convert (``__index__``) an element -- clearing or resizing that
+# container from inside the callback frees/reallocates the borrowed pointer mid-loop. Core
+# CPython's own list/dict routines mostly re-check the size after each callback, but a great
+# deal of C-EXTENSION code (and less-trodden CPython C paths) caches the raw pointer once and
+# indexes it, so these objects are the protocol-slot analogue of an OOM injection aimed at the
+# reentrancy error path rather than the allocation-failure one. The mutation is DELAYED a few
+# calls (like the exception bombs) so a partially-consumed C loop is holding a live borrowed
+# pointer when it fires, rather than emptying the container before the loop starts.
+
+
+class _ClearParent:
+    """An element that clears the container holding it, from inside a comparison/hash/index
+    callback. Seeded into ``ReentrantClearList`` / ``ReentrantClearDict``; not used directly."""
+
+    def __init__(self, parent, max_delay=2):
+        self._parent = parent
+        self._calls = 0
+        self._delay = _bomb_random.randint(0, max_delay)
+
+    def _maybe_pull(self):
+        self._calls += 1
+        if self._calls > self._delay:
+            parent = self._parent
+            try:
+                parent.clear()
+            except Exception:
+                try:
+                    del parent[:]
+                except Exception:
+                    pass
+
+    def __eq__(self, other):
+        self._maybe_pull()
+        return False
+
+    def __lt__(self, other):
+        self._maybe_pull()
+        return True
+
+    def __gt__(self, other):
+        self._maybe_pull()
+        return False
+
+    def __hash__(self):
+        self._maybe_pull()
+        return 0
+
+    def __index__(self):
+        self._maybe_pull()
+        return 0
+
+    __int__ = __index__
+
+
+class ReentrantClearList(list):
+    """A pre-armed ``list``: it contains a self-clearing element, so any C op that compares,
+    hashes, or index-converts its items -- ``x in l`` / ``l.index(x)`` / ``l.sort()`` /
+    ``min(l)`` / ``max(l)`` / ``set(l)`` / ``bytes(l)``, or a C-extension routine iterating a
+    list argument -- can free the item array mid-loop (reentrant use-after-free)."""
+
+    def __init__(self):
+        super().__init__()
+        head = _bomb_random.randint(1, 4)
+        self.extend(range(head))
+        self.append(_ClearParent(self))
+        self.extend(range(head, head + _bomb_random.randint(2, 6)))
+
+
+class ReentrantClearDict(dict):
+    """A pre-armed ``dict``: a stored VALUE clears the dict from inside a comparison, so a C op
+    that compares the mapping's values -- ``d == other`` / dict richcompare, or a C-extension
+    routine walking a dict argument's values -- can free the entry table mid-walk."""
+
+    def __init__(self):
+        super().__init__()
+        for i in range(_bomb_random.randint(1, 3)):
+            self[i] = i
+        self["_fusil_pull"] = _ClearParent(self)
+        for i in range(_bomb_random.randint(1, 3)):
+            self["k%d" % i] = i
+
+
+class MutatingIterable:
+    """A hostile iterable whose ``__length_hint__`` lies (huge / zero / negative) and whose
+    iterator mutates its own backing store mid-iteration. C consumers that PRESIZE a buffer
+    from the hint and then fill it by iterating -- ``list()`` / ``tuple()`` / ``bytes()`` /
+    ``b"".join()`` / ``set()`` / ``[*it]`` / ``PySequence_Tuple`` / ``_PyList_Extend`` -- can
+    over-read or write past the presized buffer when the real yield count disagrees."""
+
+    def __init__(self):
+        self._data = list(range(_bomb_random.randint(4, 16)))
+        # A lie about the yield count: 0/1 (undersize -> grow path), -1 (negative -> the
+        # unguarded-negative presize/ValueError vector), and a large-but-not-guaranteed-OOM
+        # over-report (8 MB presize, not 8 TB -- a sprayed bomb must not just raise MemoryError).
+        self._hint = _bomb_random.choice([0, 1, -1, 1 << 16, 1 << 20])
+
+    def __length_hint__(self):
+        return self._hint
+
+    def __iter__(self):
+        data = self._data
+
+        def _gen():
+            for i, value in enumerate(list(data)):
+                if i == 1:
+                    data.clear()
+                elif i == 2:
+                    data.extend(range(1 << 10))
+                yield value
+
+        return _gen()
+
+
+# --- Stateful / lying bombs: the protocol slot SUCCEEDS but returns an INCONSISTENT answer ---
+#
+# The exception bombs raise; the reentrant bombs mutate a container. These lie *quietly*: a slot
+# returns a value that is internally inconsistent across calls (or with a sibling slot), so C
+# code that reads it once to size/plan and then trusts it -- preallocating a buffer from __len__,
+# storing under a cached __hash__, specializing on the first element's type -- writes past the
+# buffer, lands in the wrong hash bucket, or trips a type fast-path. The lie is DELAYED (like the
+# other bombs) so the C routine has already committed to the first answer when it changes.
+
+
+class GrowingLen:
+    """__len__ under-reports on its first read (small presize) then reports a much larger size,
+    while __getitem__ / __iter__ yield up to the larger count. C code that presizes a buffer from
+    the first __len__ and then fills by index/iteration can write past it (the __len__-lies-small
+    buffer-preallocation class; complements LyingLen, which only over-reports)."""
+
+    def __init__(self):
+        self._calls = 0
+        self._small = _bomb_random.choice([0, 1, 2])
+        self._big = _bomb_random.choice([64, 256, 4096])
+
+    def __len__(self):
+        self._calls += 1
+        return self._small if self._calls <= 1 else self._big
+
+    def __getitem__(self, index):
+        if not isinstance(index, int) or index >= self._big or index < 0:
+            raise IndexError(index)
+        return index
+
+    def __iter__(self):
+        return iter(range(self._big))
+
+
+class MutatingHash:
+    """__hash__ is constant for a few calls -- long enough to be stored as a dict/set key -- then
+    starts returning different values, violating hash-constancy while the object is a live key.
+    A C hash table that cached the original hash now finds the key in the wrong bucket (lookup
+    miss / KeyError, or a corrupted probe sequence in a less-hardened C-extension mapping)."""
+
+    def __init__(self):
+        self._calls = 0
+        self._delay = _bomb_random.randint(1, 3)
+
+    def __hash__(self):
+        self._calls += 1
+        if self._calls <= self._delay:
+            return 0
+        return _bomb_random.randrange(1 << 60)
+
+    def __eq__(self, other):
+        return self is other
+
+
+class TypeFlipIterator:
+    """Yields a consistent type (ints) for a few items, then flips to an incompatible type
+    (str / None / float / a bare object) mid-stream, feeding C reducers that may specialize on
+    the first element's type -- max() / min() / sum() / sorted() / bytes() / b"".join() / heapq --
+    a wrong type after the fast-path has committed."""
+
+    def __init__(self):
+        self._i = 0
+        self._n = _bomb_random.randint(2, 8)
+        self._flip = _bomb_random.choice(["str", "none", "float", "obj"])
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        self._i += 1
+        if self._i > self._n + 4:
+            raise StopIteration
+        if self._i <= self._n:
+            return self._i  # a consistent run of ints
+        return {"str": "x", "none": None, "float": 1.5, "obj": object()}[self._flip]
+
+
+# --- Lying-equality bombs: hashable + storable, but == / identity lie -------------------------
+#
+# The stateful/lying bombs above lie about size/type; these lie about EQUALITY. They are cheap
+# to hash and store (a stable, colliding hash) so a C container accepts them as a key/member,
+# but their __eq__ then contradicts identity -- claiming equal to a value they are not, or giving
+# a different answer on each call. C code that assumes `a == b` implies interchangeability, caches
+# a slot after one comparison, or maintains its own hash table (a C-extension mapping) can probe
+# the wrong bucket, double-store, or read a stale entry. On core dict/set this desyncs values;
+# in a less-hardened C-extension container it can corrupt the table.
+
+
+class LyingEq:
+    """Hashes like the int ``1`` (a deliberate collision) and claims __eq__ equality with 1 and
+    every small int, and __index__/__int__ return 1 -- yet it is a distinct object that is not 1.
+    Used as a dict key / set member / sequence index it desyncs "equal-but-not-identical": stored
+    and found under hash(1), but not actually interchangeable with the ints it claims to equal."""
+
+    def __eq__(self, other):
+        return other == 1 or (isinstance(other, int) and -5 <= other <= 256)
+
+    def __hash__(self):
+        return hash(1)
+
+    def __index__(self):
+        return 1
+
+    __int__ = __index__
+
+
+class ShiftyEq:
+    """__eq__ flips its answer every few calls, so a single C routine that compares this object
+    more than once (insert-then-lookup in a hash table, a membership scan, a sort) sees the
+    equality relation change underneath it. __hash__ stays constant so it remains storable."""
+
+    def __init__(self):
+        self._calls = 0
+        self._period = _bomb_random.randint(2, 4)
+
+    def __eq__(self, other):
+        self._calls += 1
+        return (self._calls // self._period) % 2 == 0
+
+    def __hash__(self):
+        return 0
+
+
+# --- SuperBomb: every protocol slot is a landmine ----------------------------------------
+#
+# Spray-and-pray. A metaclass installs a raising method for a broad set of dunders; each one
+# raises a random exception, either on first use or after a per-instance random delay. The
+# attribute/lifecycle dunders (__init__/__new__/__getattribute__/__setattr__/__del__/...) are
+# deliberately left working so the object can be constructed and passed around to reach deep
+# call sites before it detonates.
+
+_SUPERBOMB_DUNDERS = (
+    "__hash__",
+    "__eq__",
+    "__ne__",
+    "__lt__",
+    "__le__",
+    "__gt__",
+    "__ge__",
+    "__call__",
+    "__len__",
+    "__length_hint__",
+    "__bool__",
+    "__contains__",
+    "__int__",
+    "__float__",
+    "__index__",
+    "__complex__",
+    "__round__",
+    "__trunc__",
+    "__repr__",
+    "__str__",
+    "__format__",
+    "__bytes__",
+    "__fspath__",
+    "__iter__",
+    "__next__",
+    "__reversed__",
+    "__getitem__",
+    "__setitem__",
+    "__delitem__",
+    "__missing__",
+    "__add__",
+    "__radd__",
+    "__iadd__",
+    "__sub__",
+    "__rsub__",
+    "__mul__",
+    "__rmul__",
+    "__mod__",
+    "__divmod__",
+    "__pow__",
+    "__truediv__",
+    "__floordiv__",
+    "__matmul__",
+    "__neg__",
+    "__pos__",
+    "__abs__",
+    "__invert__",
+    "__and__",
+    "__or__",
+    "__xor__",
+    "__lshift__",
+    "__rshift__",
+    # reflected binary ops (right-hand operand) -- reached when the LEFT operand returns
+    # NotImplemented, a callback an alternative interpreter may .unwrap() unguarded.
+    "__rmod__",
+    "__rdivmod__",
+    "__rpow__",
+    "__rtruediv__",
+    "__rfloordiv__",
+    "__rmatmul__",
+    "__rand__",
+    "__ror__",
+    "__rxor__",
+    "__rlshift__",
+    "__rrshift__",
+    # in-place ops (augmented assignment) -- a distinct set of number-protocol slots.
+    "__imul__",
+    "__isub__",
+    "__imod__",
+    "__ipow__",
+    "__itruediv__",
+    "__ifloordiv__",
+    "__imatmul__",
+    "__iand__",
+    "__ior__",
+    "__ixor__",
+    "__ilshift__",
+    "__irshift__",
+    # buffer protocol (PEP 688) -- a raising __buffer__ detonates a native buffer acquisition
+    # (memoryview(...), struct/array/C-level readbuffer), an error path C code often skips.
+    "__buffer__",
+    "__release_buffer__",
+    "__enter__",
+    "__exit__",
+    "__get__",
+    "__set__",
+    "__delete__",
+    "__aiter__",
+    "__anext__",
+    "__await__",
+    "__ceil__",
+    "__floor__",
+)
+
+
+def _make_superbomb_slot(name):
+    def _slot(self, *args, **kwargs):
+        counts = self._bomb_calls
+        counts[name] = counts.get(name, 0) + 1
+        if counts[name] > self._bomb_delay:
+            raise _bomb_exc()("fusil superbomb via %s" % name)
+
+    _slot.__name__ = name
+    return _slot
+
+
+class _SuperBombMeta(type):
+    def __new__(mcls, cname, bases, namespace):
+        for _name in _SUPERBOMB_DUNDERS:
+            namespace.setdefault(_name, _make_superbomb_slot(_name))
+        return super().__new__(mcls, cname, bases, namespace)
+
+
+class SuperBomb(metaclass=_SuperBombMeta):
+    """Every protocol dunder raises a random exception on first use or after a random delay."""
+
+    def __init__(self, max_delay=3):
+        # object.__setattr__: __setattr__ itself is not armed, but keep construction robust
+        # regardless of what a subclass/metaclass does.
+        object.__setattr__(self, "_bomb_calls", {})
+        object.__setattr__(self, "_bomb_delay", _bomb_random.randint(0, max_delay))
+
+
+# --- File-like bombs (target the common "try fd, else .read()" C pattern) ----------------
+
+
+class ReadBomb(_BombBase):
+    """A file-like whose read()/readline() succeed a random few times, then raise -- the
+    delayed mid-parse failure that surfaces partial-read error handling."""
+
+    def read(self, *args, **kwargs):
+        self._fire()
+        return b""
+
+    def readline(self, *args, **kwargs):
+        self._fire()
+        return b""
+
+    def readlines(self, *args, **kwargs):
+        self._fire()
+        return []
+
+    def __iter__(self):
+        return iter((b"line\n",))
+
+    def seek(self, *args, **kwargs):
+        return 0
+
+    def tell(self):
+        return 0
+
+    def close(self):
+        pass
+
+
+class WrongTypeFile:
+    """read() returns the wrong type (int, not bytes/str) -- targets C code that assumes the
+    return of read() is a buffer."""
+
+    def read(self, *args, **kwargs):
+        return 123456
+
+    def readline(self, *args, **kwargs):
+        return 123456
+
+    def close(self):
+        pass
+
+
+class FilenoBomb:
+    """fileno() raises (looks like a bad/again fd) while read() keeps working -- targets the
+    'try obj.fileno(), fall back to obj.read()' branch and its error handling."""
+
+    def fileno(self):
+        raise _bomb_exc()("fusil fileno bomb")
+
+    def read(self, *args, **kwargs):
+        return b""
+
+    def readable(self):
+        return True
+
+    def close(self):
+        pass
+
+
+# --- Metaclass / descriptor bombs (target attribute-access C paths) ----------------------
+
+
+class _HiddenNameMeta(type):
+    """Metaclass whose attribute access raises for the identity names C code reads unchecked
+    (``Py_TYPE(obj)->tp_name`` analogues via ``PyObject_GetAttrString(cls, "__name__")``)."""
+
+    def __getattribute__(cls, name):
+        if name in ("__name__", "__qualname__", "__module__"):
+            raise _bomb_exc()("fusil hidden name: %s" % name)
+        return super().__getattribute__(name)
+
+
+class HiddenNameType(metaclass=_HiddenNameMeta):
+    """A *class* (pass it, don't instantiate) whose __name__/__qualname__/__module__ raise."""
+
+
+class _RaisingGet:
+    """A data descriptor whose __get__/__set__ raise -- hits unguarded PyErr_Clear in getattr
+    fallbacks when installed on a commonly-probed attribute name."""
+
+    def __get__(self, obj, objtype=None):
+        raise _bomb_exc()("fusil descriptor get")
+
+    def __set__(self, obj, value):
+        raise _bomb_exc()("fusil descriptor set")
+
+
+class DescriptorBomb:
+    """An instance whose class carries raising data-descriptors on attribute names C code
+    commonly probes."""
+
+    value = _RaisingGet()
+    name = _RaisingGet()
+    read = _RaisingGet()
+    __wrapped__ = _RaisingGet()
+
+
+class _StatefulHashMeta(type):
+    """Metaclass hash that succeeds at first (registration) then raises after a random delay --
+    targets type-keyed registries (``PyDict_GetItem`` on a class key that changes hashability)."""
+
+    def __new__(mcls, name, bases, namespace):
+        cls = super().__new__(mcls, name, bases, namespace)
+        # list cell so __hash__ can mutate without triggering __setattr__ machinery
+        cls._bomb_hash_state = [0, _bomb_random.randint(0, 3)]
+        return cls
+
+    def __hash__(cls):
+        state = super().__getattribute__("_bomb_hash_state")
+        state[0] += 1
+        if state[0] > state[1]:
+            raise _bomb_exc()("fusil stateful hash")
+        return 0
+
+
+class StatefulHashType(metaclass=_StatefulHashMeta):
+    """A *class* (pass it, don't instantiate) whose hash works, then arms and starts raising."""
+
+
+# --- Instance-check metaclass bombs (target isinstance()/issubclass() C paths) ------------
+#
+# A hostile metaclass whose __instancecheck__ / __subclasscheck__ is a landmine. Pass the CLASS
+# (not an instance) where a type is expected -- isinstance(x, ThisType), issubclass(C, ThisType),
+# abc registration / __subclasshook__, functools.singledispatch, or any C code that type-checks an
+# argument against a user-supplied class -- and the check RAISES or LIES. C paths that call
+# PyObject_IsInstance / PyObject_IsSubclass and then PyErr_Clear (or cache the result and dispatch
+# on it) either skip the raised error or act on a contradictory, changing answer.
+
+
+class _RaisingInstanceCheckMeta(type):
+    """__instancecheck__/__subclasscheck__ succeed a random number of times, then raise."""
+
+    def __new__(mcls, name, bases, namespace):
+        cls = super().__new__(mcls, name, bases, namespace)
+        # list cell so the check can mutate state without going through __setattr__
+        cls._bomb_ic_state = [0, _bomb_random.randint(0, 3)]
+        return cls
+
+    def _bomb_ic_fire(cls):
+        state = type.__getattribute__(cls, "_bomb_ic_state")
+        state[0] += 1
+        if state[0] > state[1]:
+            raise _bomb_exc()("fusil instancecheck")
+
+    def __instancecheck__(cls, instance):
+        cls._bomb_ic_fire()
+        return False
+
+    def __subclasscheck__(cls, subclass):
+        cls._bomb_ic_fire()
+        return False
+
+
+class RaisingInstanceCheckType(metaclass=_RaisingInstanceCheckMeta):
+    """A *class* (pass it, don't instantiate) whose isinstance()/issubclass() work, then arm and
+    raise -- detonating a C error path that type-checks a value against this passed class."""
+
+
+class _LyingInstanceCheckMeta(type):
+    """__instancecheck__/__subclasscheck__ SUCCEED but flip their answer every few calls, so a C
+    routine that checks the same class more than once (a cached isinstance dispatch, an abc
+    __subclasshook__ memo, a singledispatch registry) sees membership change underneath it."""
+
+    def __new__(mcls, name, bases, namespace):
+        cls = super().__new__(mcls, name, bases, namespace)
+        cls._bomb_ic_state = [0, _bomb_random.randint(2, 4)]
+        return cls
+
+    def __instancecheck__(cls, instance):
+        state = type.__getattribute__(cls, "_bomb_ic_state")
+        state[0] += 1
+        return (state[0] // state[1]) % 2 == 0
+
+    __subclasscheck__ = __instancecheck__
+
+
+class LyingInstanceCheckType(metaclass=_LyingInstanceCheckMeta):
+    """A *class* (pass it, don't instantiate) whose isinstance()/issubclass() alternate True/False,
+    so repeated checks against it contradict each other -- desyncs cached type dispatch."""
+
+
+# --- Numeric / in-place-protocol bombs (target PyNumber_InPlace* and reflected ops) -------
+#
+# The number protocol's in-place slots (__iadd__/__imul__/... reached by ``x OP= bomb``), reflected
+# slots (__radd__/... reached by ``n OP bomb`` when the left operand returns NotImplemented), and
+# forward slots (__add__/...) all SUCCEED here but return a value of an UNEXPECTED type (str, None,
+# bytes, a huge int, NaN, self). A C accumulator/reducer -- ``PyNumber_InPlaceAdd(acc, x)`` in a
+# loop, sum() / functools.reduce, the same-type in-place fast paths (_BINARY_OP_INPLACE_ADD_UNICODE
+# and friends) -- that assumes the op returns the original type then operates on the wrong-typed
+# result. SuperBomb *raises* from these slots; this bomb *lies*, so it slips past a raise-guard and
+# corrupts the value instead. Hash/repr are left working so it survives arg-passing to reach a slot.
+
+_LYING_NUMERIC_RETURNS = (0, 1, -1, "", "lie", b"", None, 10**30, float("nan"))
+
+_LYING_NUMERIC_SLOTS = (
+    "__add__",
+    "__radd__",
+    "__iadd__",
+    "__sub__",
+    "__rsub__",
+    "__isub__",
+    "__mul__",
+    "__rmul__",
+    "__imul__",
+    "__mod__",
+    "__rmod__",
+    "__imod__",
+    "__pow__",
+    "__rpow__",
+    "__ipow__",
+    "__truediv__",
+    "__rtruediv__",
+    "__itruediv__",
+    "__floordiv__",
+    "__rfloordiv__",
+    "__ifloordiv__",
+    "__and__",
+    "__rand__",
+    "__iand__",
+    "__or__",
+    "__ror__",
+    "__ior__",
+    "__xor__",
+    "__rxor__",
+    "__ixor__",
+    "__lshift__",
+    "__rlshift__",
+    "__ilshift__",
+    "__rshift__",
+    "__rrshift__",
+    "__irshift__",
+    "__matmul__",
+    "__rmatmul__",
+    "__imatmul__",
+)
+
+
+def _make_lying_numeric_slot(name):
+    def _slot(self, *args):
+        return _bomb_random.choice(_LYING_NUMERIC_RETURNS)
+
+    _slot.__name__ = name
+    return _slot
+
+
+class _LyingInplaceMeta(type):
+    def __new__(mcls, cname, bases, namespace):
+        for _name in _LYING_NUMERIC_SLOTS:
+            namespace.setdefault(_name, _make_lying_numeric_slot(_name))
+        return super().__new__(mcls, cname, bases, namespace)
+
+
+class LyingInplace(metaclass=_LyingInplaceMeta):
+    """Every numeric slot (forward / reflected / in-place) succeeds but returns a random UNEXPECTED
+    type, so ``acc += bomb`` / ``n + bomb`` / a C reduction loop gets a str/None/huge-int/NaN where
+    it expected a number and then operates on the wrong type. Hashable + reprable (left working) so
+    it reaches the number-protocol slot instead of detonating during arg handling."""
+
+
+# Names the argument generator instantiates (as ``Name()``); every class constructs with no
+# required arguments and self-randomises its delay/exception.
+BOMB_CLASS_NAMES = [
+    "HashBomb",
+    "EqBomb",
+    "IndexBomb",
+    "LenBomb",
+    "LyingLen",
+    "ReprBomb",
+    "FailingIterator",
+    "SuperBomb",
+    "ReadBomb",
+    "WrongTypeFile",
+    "FilenoBomb",
+    "DescriptorBomb",
+    # Reentrant-mutation bombs: MUTATE the container mid-C-operation (reentrancy / UAF class),
+    # rather than raising. Self-contained, built with no required args, arg-injectable like the rest.
+    "ReentrantClearList",
+    "ReentrantClearDict",
+    "MutatingIterable",
+    # Stateful / lying bombs: a slot SUCCEEDS but returns an inconsistent answer across calls
+    # (__len__ grows, __hash__ changes while keyed, iterator flips element type mid-stream).
+    "GrowingLen",
+    "MutatingHash",
+    "TypeFlipIterator",
+    # Lying-equality bombs: hashable + storable, but __eq__ / identity lie (claim equal to a
+    # value they are not, or flip the answer on each call) -- desyncs C hash tables.
+    "LyingEq",
+    "ShiftyEq",
+    # Numeric / in-place-protocol bomb: forward/reflected/in-place ops succeed but return an
+    # unexpected type, corrupting a C accumulator that assumes the op preserves the operand type.
+    "LyingInplace",
+]
+
+# Names the argument generator passes *as the class object itself* (not instantiated) -- the
+# bomb is the type: a metaclass turns attribute/hash access, or an isinstance()/issubclass()
+# check, on the class into a landmine.
+BOMB_TYPE_NAMES = [
+    "HiddenNameType",
+    "StatefulHashType",
+    # Instance-check metaclass bombs: isinstance(x, T) / issubclass(C, T) against these raises
+    # or flips its answer -- detonates / desyncs C type-check-against-a-passed-class paths.
+    "RaisingInstanceCheckType",
+    "LyingInstanceCheckType",
+]
+
+
+def errback(*args, **kw):
+    raise ValueError('errback called')
+
+
+class Liar1:
+    def __eq__(self, other):
+        return True
+
+class Liar2:
+    def __eq__(self, other):
+        return False
+
+liar1, liar2 = Liar1(), Liar2()
+
+class Evil:
+    def __eq__(self, other):
+        for attr in dir(other):
+            try: other.__dict__[attr] = errback
+            except: pass
+
+evil = Evil()
+
+
+# Define a custom exception to distinguish our check from others.
+class JITCorrectnessError(AssertionError): pass
+
+# Helper for correctness testing that handles NaN, lambdas, and complex numbers.
+import math
+import types
+def compare_results(a, b):
+    if isinstance(a, types.FunctionType) and a.__name__ == '<lambda>' and \
+       isinstance(b, types.FunctionType) and b.__name__ == '<lambda>':
+        return True # Treat two lambdas as equal for our purposes
+    if isinstance(a, complex) and isinstance(b, complex):
+        a_real_nan = math.isnan(a.real)
+        b_real_nan = math.isnan(b.real)
+        a_imag_nan = math.isnan(a.imag)
+        b_imag_nan = math.isnan(b.imag)
+        real_match = (a.real == b.real) or (a_real_nan and b_real_nan)
+        imag_match = (a.imag == b.imag) or (a_imag_nan and b_imag_nan)
+        return real_match and imag_match
+    if isinstance(a, float) and isinstance(b, float) and math.isnan(a) and math.isnan(b):
+        return True
+    if isinstance(a, object) and isinstance(b, object):
+        return True
+    if isinstance(a, tuple) and isinstance(b, tuple) and len(a) == len(b):
+        return all(compare_results(x, y) for x, y in zip(a, b))
+    return a == b
+
+SENTINEL_VALUE = object()
+
+def callMethod(prefix, obj_to_call, method_name, *arguments, verbose=True):
+    func_display_name = f"importlib.resources._common.{method_name}()" if obj_to_call is importlib.resources._common else f"{obj_to_call.__class__.__name__}.{method_name}()"
+    message = f"[{prefix}] {func_display_name}"
+    if verbose:
+        print(message, file=stderr)
+    result = SENTINEL_VALUE
+    try:
+        func_to_run = getattr(obj_to_call, method_name)
+        for _ in range(int(3)):
+            result = func_to_run(*arguments)
+    except (Exception, SystemExit, KeyboardInterrupt) as err:
+        try:
+            errmsg = repr(err)
+        except Exception as e_repr:
+            try:
+                _repr_detail = str(e_repr)
+            except Exception:
+                _repr_detail = '<unprintable>'
+            errmsg = f'Error during repr: {e_repr.__class__.__name__}: {_repr_detail}'
+        errmsg = errmsg.encode('ASCII', 'replace').decode('ASCII')
+        if verbose:
+            print(f"[{prefix}] {func_display_name} => EXCEPTION: {err.__class__.__name__}: {errmsg}", file=stderr)
+        result = SENTINEL_VALUE
+    if verbose:
+        print(f"[{prefix}] -explicit garbage collection-", file=stderr)
+    collect()
+    if result is not SENTINEL_VALUE:
+        fuzzer_threads_alive.append(Thread(target=func_to_run, args=arguments, name=message))
+    return result
+
+def callFunc(prefix, func_name_str, *arguments, verbose=True):
+    return callMethod(prefix, importlib.resources._common, func_name_str, *arguments, verbose=verbose)
+
+fuzz_target_module = importlib.resources._common
+
+fuzzer_threads_alive = []
+fuzzer_async_tasks = []
+
+
+# FUSIL_BOILERPLATE_END
+
+
+import sys
+# Do NOT import `random` (the function) -- it shadows the `random` module that
+# embedded tricky-object code imports and calls as `random.randint(...)`.
+from random import choice, randint, sample
+from sys import stderr, path as sys_path
+
+
+print("--- Fuzzing 9 functions in importlib.resources._common ---", file=stderr)
+try:
+    res_f1 = callFunc("f1", "files",
+        HiddenNameType,
+    verbose=True)
+except Exception as _argexc_f1:
+    print("[f1] call skipped (argument build failed):", repr(_argexc_f1), file=stderr)
+
+target_func = None
+try:
+    target_func = getattr(fuzz_target_module, 'files')
+except Exception as e_get_target_func:
+    print(f"[f1] Failed to get attribute files from fuzz_target_module: {e_get_target_func.__class__.__name__} {e_get_target_func}", file=stderr)
+
+if target_func is not None:
+    try:
+        thread_obj = Thread(target=target_func, args=(list[weird_classes['weird_Counter']] | weird_classes['weird_bytes'] | big_union,), name='f1_files')
+        fuzzer_threads_alive.append(thread_obj)
+    except Exception as e_thread_create:
+        print(f"[f1] Failed to create thread for files: {e_thread_create.__class__.__name__}", file=stderr)
+
+if target_func is not None:
+    def async_call_f1_files(target_func=target_func):
+        print("Starting async task: async_call_f1_files", file=stderr)
+        time.sleep(0.000821) # Small delay
+        try:
+            target_func(EqBomb())
+        except Exception as e_async_call:
+            print(f"[f1] Exception in async task async_call_f1_files: {e_async_call.__class__.__name__} {e_async_call}", file=stderr)
+        print("Ending async task: async_call_f1_files", file=stderr)
+    fuzzer_async_tasks.append(async_call_f1_files)
+
+try:
+    res_f2 = callFunc("f2", "resolve",
+        b"\xA5\x55\xCC\x8D\x2A\xD9\x97\x00\xE8\x2E\xD8\x82\x58\x1D\x84\x81\x16",
+    verbose=True)
+except Exception as _argexc_f2:
+    print("[f2] call skipped (argument build failed):", repr(_argexc_f2), file=stderr)
+
+target_func = None
+try:
+    target_func = getattr(fuzz_target_module, 'resolve')
+except Exception as e_get_target_func:
+    print(f"[f2] Failed to get attribute resolve from fuzz_target_module: {e_get_target_func.__class__.__name__} {e_get_target_func}", file=stderr)
+
+if target_func is not None:
+    try:
+        thread_obj = Thread(target=target_func, args=("\x8DU\xC3&\xBD\xEC\x8D\xE9\x85Ul\x9A",), name='f2_resolve')
+        fuzzer_threads_alive.append(thread_obj)
+    except Exception as e_thread_create:
+        print(f"[f2] Failed to create thread for resolve: {e_thread_create.__class__.__name__}", file=stderr)
+
+if target_func is not None:
+    def async_call_f2_resolve(target_func=target_func):
+        print("Starting async task: async_call_f2_resolve", file=stderr)
+        time.sleep(0.000090) # Small delay
+        try:
+            target_func(744190360914956248)
+        except Exception as e_async_call:
+            print(f"[f2] Exception in async task async_call_f2_resolve: {e_async_call.__class__.__name__} {e_async_call}", file=stderr)
+        print("Ending async task: async_call_f2_resolve", file=stderr)
+    fuzzer_async_tasks.append(async_call_f2_resolve)
+
+try:
+    res_f3 = callFunc("f3", "as_file",
+    verbose=True)
+except Exception as _argexc_f3:
+    print("[f3] call skipped (argument build failed):", repr(_argexc_f3), file=stderr)
+
+target_func = None
+try:
+    target_func = getattr(fuzz_target_module, 'as_file')
+except Exception as e_get_target_func:
+    print(f"[f3] Failed to get attribute as_file from fuzz_target_module: {e_get_target_func.__class__.__name__} {e_get_target_func}", file=stderr)
+
+if target_func is not None:
+    try:
+        thread_obj = Thread(target=target_func, args=(), name='f3_as_file')
+        fuzzer_threads_alive.append(thread_obj)
+    except Exception as e_thread_create:
+        print(f"[f3] Failed to create thread for as_file: {e_thread_create.__class__.__name__}", file=stderr)
+
+if target_func is not None:
+    def async_call_f3_as_file(target_func=target_func):
+        print("Starting async task: async_call_f3_as_file", file=stderr)
+        time.sleep(0.000567) # Small delay
+        try:
+            target_func()
+        except Exception as e_async_call:
+            print(f"[f3] Exception in async task async_call_f3_as_file: {e_async_call.__class__.__name__} {e_async_call}", file=stderr)
+        print("Ending async task: async_call_f3_as_file", file=stderr)
+    fuzzer_async_tasks.append(async_call_f3_as_file)
+
+try:
+    res_f4 = callFunc("f4", "wrap_spec",
+        TypeFlipIterator(),
+    verbose=True)
+except Exception as _argexc_f4:
+    print("[f4] call skipped (argument build failed):", repr(_argexc_f4), file=stderr)
+
+target_func = None
+try:
+    target_func = getattr(fuzz_target_module, 'wrap_spec')
+except Exception as e_get_target_func:
+    print(f"[f4] Failed to get attribute wrap_spec from fuzz_target_module: {e_get_target_func.__class__.__name__} {e_get_target_func}", file=stderr)
+
+if target_func is not None:
+    try:
+        thread_obj = Thread(target=target_func, args=(MutatingHash(),), name='f4_wrap_spec')
+        fuzzer_threads_alive.append(thread_obj)
+    except Exception as e_thread_create:
+        print(f"[f4] Failed to create thread for wrap_spec: {e_thread_create.__class__.__name__}", file=stderr)
+
+if target_func is not None:
+    def async_call_f4_wrap_spec(target_func=target_func):
+        print("Starting async task: async_call_f4_wrap_spec", file=stderr)
+        time.sleep(0.000475) # Small delay
+        try:
+            target_func(SuperBomb())
+        except Exception as e_async_call:
+            print(f"[f4] Exception in async task async_call_f4_wrap_spec: {e_async_call.__class__.__name__} {e_async_call}", file=stderr)
+        print("Ending async task: async_call_f4_wrap_spec", file=stderr)
+    fuzzer_async_tasks.append(async_call_f4_wrap_spec)
+
+try:
+    res_f5 = callFunc("f5", "files",
+        weird_classes['weird_complex'],
+    verbose=True)
+except Exception as _argexc_f5:
+    print("[f5] call skipped (argument build failed):", repr(_argexc_f5), file=stderr)
+
+target_func = None
+try:
+    target_func = getattr(fuzz_target_module, 'files')
+except Exception as e_get_target_func:
+    print(f"[f5] Failed to get attribute files from fuzz_target_module: {e_get_target_func.__class__.__name__} {e_get_target_func}", file=stderr)
+
+if target_func is not None:
+    try:
+        thread_obj = Thread(target=target_func, args=(17,), name='f5_files')
+        fuzzer_threads_alive.append(thread_obj)
+    except Exception as e_thread_create:
+        print(f"[f5] Failed to create thread for files: {e_thread_create.__class__.__name__}", file=stderr)
+
+if target_func is not None:
+    def async_call_f5_files(target_func=target_func):
+        print("Starting async task: async_call_f5_files", file=stderr)
+        time.sleep(0.000626) # Small delay
+        try:
+            target_func(Exception('fuzzer_generated_exception'))
+        except Exception as e_async_call:
+            print(f"[f5] Exception in async task async_call_f5_files: {e_async_call.__class__.__name__} {e_async_call}", file=stderr)
+        print("Ending async task: async_call_f5_files", file=stderr)
+    fuzzer_async_tasks.append(async_call_f5_files)
+
+try:
+    res_f6 = callFunc("f6", "files",
+        complex(float("inf"), float("nan")),
+    verbose=True)
+except Exception as _argexc_f6:
+    print("[f6] call skipped (argument build failed):", repr(_argexc_f6), file=stderr)
+
+target_func = None
+try:
+    target_func = getattr(fuzz_target_module, 'files')
+except Exception as e_get_target_func:
+    print(f"[f6] Failed to get attribute files from fuzz_target_module: {e_get_target_func.__class__.__name__} {e_get_target_func}", file=stderr)
+
+if target_func is not None:
+    try:
+        thread_obj = Thread(target=target_func, args=("\x00",), name='f6_files')
+        fuzzer_threads_alive.append(thread_obj)
+    except Exception as e_thread_create:
+        print(f"[f6] Failed to create thread for files: {e_thread_create.__class__.__name__}", file=stderr)
+
+if target_func is not None:
+    def async_call_f6_files(target_func=target_func):
+        print("Starting async task: async_call_f6_files", file=stderr)
+        time.sleep(0.000231) # Small delay
+        try:
+            target_func(StatefulHashType)
+        except Exception as e_async_call:
+            print(f"[f6] Exception in async task async_call_f6_files: {e_async_call.__class__.__name__} {e_async_call}", file=stderr)
+        print("Ending async task: async_call_f6_files", file=stderr)
+    fuzzer_async_tasks.append(async_call_f6_files)
+
+try:
+    res_f7 = callFunc("f7", "as_file",
+        weird_instances['weird_Queue_single'],
+    verbose=True)
+except Exception as _argexc_f7:
+    print("[f7] call skipped (argument build failed):", repr(_argexc_f7), file=stderr)
+
+target_func = None
+try:
+    target_func = getattr(fuzz_target_module, 'as_file')
+except Exception as e_get_target_func:
+    print(f"[f7] Failed to get attribute as_file from fuzz_target_module: {e_get_target_func.__class__.__name__} {e_get_target_func}", file=stderr)
+
+if target_func is not None:
+    try:
+        thread_obj = Thread(target=target_func, args=(b"\x69\xC8\xEA\x71\xB2\x4D\x49\x44\x5D\x2D\x97\x1F\x17\x45\xEE\x6E\xCF",), name='f7_as_file')
+        fuzzer_threads_alive.append(thread_obj)
+    except Exception as e_thread_create:
+        print(f"[f7] Failed to create thread for as_file: {e_thread_create.__class__.__name__}", file=stderr)
+
+if target_func is not None:
+    def async_call_f7_as_file(target_func=target_func):
+        print("Starting async task: async_call_f7_as_file", file=stderr)
+        time.sleep(0.000576) # Small delay
+        try:
+            target_func(weird_classes['weird_deque'])
+        except Exception as e_async_call:
+            print(f"[f7] Exception in async task async_call_f7_as_file: {e_async_call.__class__.__name__} {e_async_call}", file=stderr)
+        print("Ending async task: async_call_f7_as_file", file=stderr)
+    fuzzer_async_tasks.append(async_call_f7_as_file)
+
+try:
+    res_f8 = callFunc("f8", "files",
+        -12,
+        r"\wFyr.h\ZaufT*V\d*",
+    verbose=True)
+except Exception as _argexc_f8:
+    print("[f8] call skipped (argument build failed):", repr(_argexc_f8), file=stderr)
+
+target_func = None
+try:
+    target_func = getattr(fuzz_target_module, 'files')
+except Exception as e_get_target_func:
+    print(f"[f8] Failed to get attribute files from fuzz_target_module: {e_get_target_func.__class__.__name__} {e_get_target_func}", file=stderr)
+
+if target_func is not None:
+    try:
+        thread_obj = Thread(target=target_func, args=("aTS/fvzkZvz0yrVv27xMBAMlr/9-O/ac", "\x00"), name='f8_files')
+        fuzzer_threads_alive.append(thread_obj)
+    except Exception as e_thread_create:
+        print(f"[f8] Failed to create thread for files: {e_thread_create.__class__.__name__}", file=stderr)
+
+if target_func is not None:
+    def async_call_f8_files(target_func=target_func):
+        print("Starting async task: async_call_f8_files", file=stderr)
+        time.sleep(0.000126) # Small delay
+        try:
+            target_func(WrongTypeFile(), list[weird_classes['weird_str']])
+        except Exception as e_async_call:
+            print(f"[f8] Exception in async task async_call_f8_files: {e_async_call.__class__.__name__} {e_async_call}", file=stderr)
+        print("Ending async task: async_call_f8_files", file=stderr)
+    fuzzer_async_tasks.append(async_call_f8_files)
+
+try:
+    res_f9 = callFunc("f9", "wrap_spec",
+        bytearray(b"abc\xe9\xff"),
+    verbose=True)
+except Exception as _argexc_f9:
+    print("[f9] call skipped (argument build failed):", repr(_argexc_f9), file=stderr)
+
+target_func = None
+try:
+    target_func = getattr(fuzz_target_module, 'wrap_spec')
+except Exception as e_get_target_func:
+    print(f"[f9] Failed to get attribute wrap_spec from fuzz_target_module: {e_get_target_func.__class__.__name__} {e_get_target_func}", file=stderr)
+
+if target_func is not None:
+    try:
+        thread_obj = Thread(target=target_func, args=(-11,), name='f9_wrap_spec')
+        fuzzer_threads_alive.append(thread_obj)
+    except Exception as e_thread_create:
+        print(f"[f9] Failed to create thread for wrap_spec: {e_thread_create.__class__.__name__}", file=stderr)
+
+if target_func is not None:
+    def async_call_f9_wrap_spec(target_func=target_func):
+        print("Starting async task: async_call_f9_wrap_spec", file=stderr)
+        time.sleep(0.000533) # Small delay
+        try:
+            target_func("\U0010FFFF")
+        except Exception as e_async_call:
+            print(f"[f9] Exception in async task async_call_f9_wrap_spec: {e_async_call.__class__.__name__} {e_async_call}", file=stderr)
+        print("Ending async task: async_call_f9_wrap_spec", file=stderr)
+    fuzzer_async_tasks.append(async_call_f9_wrap_spec)
+
+try:
+    res_f10 = callFunc("f10", "resolve",
+        dict[weird_classes['weird_int']] | weird_classes['weird_bytearray'] | big_union,
+    verbose=True)
+except Exception as _argexc_f10:
+    print("[f10] call skipped (argument build failed):", repr(_argexc_f10), file=stderr)
+
+target_func = None
+try:
+    target_func = getattr(fuzz_target_module, 'resolve')
+except Exception as e_get_target_func:
+    print(f"[f10] Failed to get attribute resolve from fuzz_target_module: {e_get_target_func.__class__.__name__} {e_get_target_func}", file=stderr)
+
+if target_func is not None:
+    try:
+        thread_obj = Thread(target=target_func, args=(HiddenNameType,), name='f10_resolve')
+        fuzzer_threads_alive.append(thread_obj)
+    except Exception as e_thread_create:
+        print(f"[f10] Failed to create thread for resolve: {e_thread_create.__class__.__name__}", file=stderr)
+
+if target_func is not None:
+    def async_call_f10_resolve(target_func=target_func):
+        print("Starting async task: async_call_f10_resolve", file=stderr)
+        time.sleep(0.000051) # Small delay
+        try:
+            target_func(tuple[weird_classes['weird_list']])
+        except Exception as e_async_call:
+            print(f"[f10] Exception in async task async_call_f10_resolve: {e_async_call.__class__.__name__} {e_async_call}", file=stderr)
+        print("Ending async task: async_call_f10_resolve", file=stderr)
+    fuzzer_async_tasks.append(async_call_f10_resolve)
+
+try:
+    res_f11 = callFunc("f11", "get_resource_reader",
+        Exception('fuzzer_generated_exception'),
+    verbose=True)
+except Exception as _argexc_f11:
+    print("[f11] call skipped (argument build failed):", repr(_argexc_f11), file=stderr)
+
+target_func = None
+try:
+    target_func = getattr(fuzz_target_module, 'get_resource_reader')
+except Exception as e_get_target_func:
+    print(f"[f11] Failed to get attribute get_resource_reader from fuzz_target_module: {e_get_target_func.__class__.__name__} {e_get_target_func}", file=stderr)
+
+if target_func is not None:
+    try:
+        thread_obj = Thread(target=target_func, args=(bytearray(b"test"),), name='f11_get_resource_reader')
+        fuzzer_threads_alive.append(thread_obj)
+    except Exception as e_thread_create:
+        print(f"[f11] Failed to create thread for get_resource_reader: {e_thread_create.__class__.__name__}", file=stderr)
+
+if target_func is not None:
+    def async_call_f11_get_resource_reader(target_func=target_func):
+        print("Starting async task: async_call_f11_get_resource_reader", file=stderr)
+        time.sleep(0.000081) # Small delay
+        try:
+            target_func(StatefulHashType)
+        except Exception as e_async_call:
+            print(f"[f11] Exception in async task async_call_f11_get_resource_reader: {e_async_call.__class__.__name__} {e_async_call}", file=stderr)
+        print("Ending async task: async_call_f11_get_resource_reader", file=stderr)
+    fuzzer_async_tasks.append(async_call_f11_get_resource_reader)
+
+try:
+    res_f12 = callFunc("f12", "resolve",
+        r"Ac.W\AP.\b\BQM\AM\dObCqMLqbFE\AA\SS.uVy",
+    verbose=True)
+except Exception as _argexc_f12:
+    print("[f12] call skipped (argument build failed):", repr(_argexc_f12), file=stderr)
+
+target_func = None
+try:
+    target_func = getattr(fuzz_target_module, 'resolve')
+except Exception as e_get_target_func:
+    print(f"[f12] Failed to get attribute resolve from fuzz_target_module: {e_get_target_func.__class__.__name__} {e_get_target_func}", file=stderr)
+
+if target_func is not None:
+    try:
+        thread_obj = Thread(target=target_func, args=("\uDC80",), name='f12_resolve')
+        fuzzer_threads_alive.append(thread_obj)
+    except Exception as e_thread_create:
+        print(f"[f12] Failed to create thread for resolve: {e_thread_create.__class__.__name__}", file=stderr)
+
+if target_func is not None:
+    def async_call_f12_resolve(target_func=target_func):
+        print("Starting async task: async_call_f12_resolve", file=stderr)
+        time.sleep(0.000103) # Small delay
+        try:
+            target_func(weird_classes['weird_dict'])
+        except Exception as e_async_call:
+            print(f"[f12] Exception in async task async_call_f12_resolve: {e_async_call.__class__.__name__} {e_async_call}", file=stderr)
+        print("Ending async task: async_call_f12_resolve", file=stderr)
+    fuzzer_async_tasks.append(async_call_f12_resolve)
+
+try:
+    res_f13 = callFunc("f13", "_",
+    verbose=True)
+except Exception as _argexc_f13:
+    print("[f13] call skipped (argument build failed):", repr(_argexc_f13), file=stderr)
+
+target_func = None
+try:
+    target_func = getattr(fuzz_target_module, '_')
+except Exception as e_get_target_func:
+    print(f"[f13] Failed to get attribute _ from fuzz_target_module: {e_get_target_func.__class__.__name__} {e_get_target_func}", file=stderr)
+
+if target_func is not None:
+    try:
+        thread_obj = Thread(target=target_func, args=(), name='f13__')
+        fuzzer_threads_alive.append(thread_obj)
+    except Exception as e_thread_create:
+        print(f"[f13] Failed to create thread for _: {e_thread_create.__class__.__name__}", file=stderr)
+
+if target_func is not None:
+    def async_call_f13__(target_func=target_func):
+        print("Starting async task: async_call_f13__", file=stderr)
+        time.sleep(0.000910) # Small delay
+        try:
+            target_func()
+        except Exception as e_async_call:
+            print(f"[f13] Exception in async task async_call_f13__: {e_async_call.__class__.__name__} {e_async_call}", file=stderr)
+        print("Ending async task: async_call_f13__", file=stderr)
+    fuzzer_async_tasks.append(async_call_f13__)
+
+try:
+    res_f14 = callFunc("f14", "_tempfile",
+    verbose=True)
+except Exception as _argexc_f14:
+    print("[f14] call skipped (argument build failed):", repr(_argexc_f14), file=stderr)
+
+target_func = None
+try:
+    target_func = getattr(fuzz_target_module, '_tempfile')
+except Exception as e_get_target_func:
+    print(f"[f14] Failed to get attribute _tempfile from fuzz_target_module: {e_get_target_func.__class__.__name__} {e_get_target_func}", file=stderr)

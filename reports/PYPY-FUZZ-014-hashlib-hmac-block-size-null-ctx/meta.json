@@ -1,0 +1,29 @@
+{
+  "id": "PYPY-FUZZ-014",
+  "slug": "hashlib-hmac-block-size-null-ctx",
+  "title": "`_hashlib.HMAC.block_size` passes a NULL `ctx` to OpenSSL after a failed `__init__`",
+  "short_title": "`HMAC.block_size` on a NULL ctx",
+  "kind": "segv",
+  "signatures": [
+    "lib/pypy3.11/_hashlib/__init__.py (HASH.__init__, sets self.ctx = ffi.NULL)",
+    "lib/pypy3.11/_hashlib/__init__.py:241 (HMAC.block_size)"
+  ],
+  "one_line_repro": "import _hashlib; h = _hashlib.HMAC.__new__(_hashlib.HMAC); try:;     h.__init__(0); except Exception:;     pass; h.block_size",
+  "repro": "repro.py",
+  "evidence": "evidence.txt",
+  "status": "reproduced",
+  "reliability": "deterministic (4/4 failing-construction cases)",
+  "needs_rlimit": false,
+  "reduced_from": "13 fleet dirs, all one signature -> 4 lines",
+  "confirmed_build": "PyPy 7.3.23 (194f9f44b505, Python 3.11.15)",
+  "cpython_oracle": "CPython 3.14.3",
+  "found_by": [
+    "fusil, fleet_07 (--new-uninit variant)"
+  ],
+  "defect_class": "missing-sibling-guard",
+  "shared_with_cpython": false,
+  "cpython_behavior": "CPython forbids constructing _hashlib.HMAC from Python at all (TypeError), so the half-initialized state is unreachable there",
+  "prior_art": "Unreported. Adjacent to pypy#5127 (`hashlib.shake_128()._keccak_init(())` aborting with `free(): invalid next size (fast)`), filed by this project's author and closed; re-tested 2026-08-27 on 7.3.23: FIXED. The fix did not propagate to HMAC.block_size.",
+  "leak_signature": "Segmentation fault (inside OpenSSL's HMAC_CTX_get_md)",
+  "notes": "The mechanism is visible in PyPy's own pure-Python source. `HASH.__init__` sets `self.ctx = ffi.NULL` (twice -- a literally duplicated line), then `py_digest_by_name` raises on an unknown digest name, leaving a LIVE object whose ctx is NULL. `HMAC.block_size` then calls `lib.HMAC_CTX_get_md(self.ctx)` and only afterwards tests `if not md:` -- the check guards the RESULT of the call, which is too late; the fault is inside the call. The object survives its own failed constructor only because `__new__` plus an explicit `__init__` keeps the reference -- a plain `_hashlib.HMAC('nosuchdigest')` also raises but drops the object. The duplicated NULL assignment is worth pointing out on its own: someone was aware NULL is a state this object passes through. Mirror image of PYPY-FUZZ-004 in the same cffi-stdlib family: that assigns a DANGLING pointer after freeing, this assigns NULL and dereferences it."
+}

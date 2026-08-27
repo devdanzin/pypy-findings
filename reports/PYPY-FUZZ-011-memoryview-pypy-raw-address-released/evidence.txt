@@ -1,0 +1,37 @@
+PYPY-FUZZ-011 — `_pypy_raw_address()` on a released view
+==============================================================================
+
+Captured by scripts/capture_evidence.py. Reliability: deterministic.
+Needs an address-space limit: no.
+
+PyPy    : Python 3.11.15 (194f9f44b505, May 25 2026, 19:34:11) [PyPy 7.3.23 with GCC 10.2.1 20210130 (Red Hat 10.2.1-11)]
+CPython : Python 3.14.3 (main, Mar 3 2026, 14:59:53) [Clang 21.1.4 ]
+Command : <interpreter> -u repro.py
+
+The exit status below is the REPRODUCER DRIVER's, not the finding's. Most drivers exit
+1 when the bug reproduces; the differential-table drivers (PYPY-FUZZ-001/008) exit 0
+when every measured outcome matched what the record documents -- crashes included. Read
+the body, not the status.
+
+------------------------------------------------------------------------------
+PyPy — exit 1 (4.8s)
+------------------------------------------------------------------------------
+pypy 3.11.15
+
+   explicit release                           SIGSEGV
+   release of an empty view                   SIGSEGV
+   released via `with` (idiomatic)            SIGSEGV
+   released array view                        SIGSEGV
+   live view (control)                        no error
+   live slice of a released parent (control)  no error
+   another member on a released view (control) ValueError: operation forbidden on released memoryvi
+
+All cases as documented: _pypy_raw_address is the only memoryview member that
+dereferences a released view instead of raising ValueError.
+
+------------------------------------------------------------------------------
+CPython — exit 0 (0.0s)
+------------------------------------------------------------------------------
+cpython 3.14.3
+
+memoryview._pypy_raw_address does not exist on this interpreter (it is PyPy-only); nothing to test.

@@ -1,0 +1,44 @@
+PYPY-FUZZ-006 — gc.collect() after a caught MemoryError
+==============================================================================
+
+Captured by scripts/capture_evidence.py. Reliability: 4/4 at a 3072 MiB cap in the shipped 5-cap sweep; 6/6 in a separate 6-run measurement. CPython 0/20 across the same five caps.
+Needs an address-space limit: yes (the reproducer applies it itself).
+
+PyPy    : Python 3.11.15 (194f9f44b505, May 25 2026, 19:34:11) [PyPy 7.3.23 with GCC 10.2.1 20210130 (Red Hat 10.2.1-11)]
+CPython : Python 3.14.3 (main, Mar 3 2026, 14:59:53) [Clang 21.1.4 ]
+Command : <interpreter> -u repro.py
+
+The exit status below is the REPRODUCER DRIVER's, not the finding's. Most drivers exit
+1 when the bug reproduces; the differential-table drivers (PYPY-FUZZ-001/008) exit 0
+when every measured outcome matched what the record documents -- crashes included. Read
+the body, not the status.
+
+------------------------------------------------------------------------------
+PyPy — exit 1 (173.5s)
+------------------------------------------------------------------------------
+pypy 3.11.15
+running minimal.py under a range of RLIMIT_AS caps, 4 runs each
+
+  cap  1024 MiB -> 0 segfault, 0 abort, 4 clean
+  cap  1536 MiB -> 0 segfault, 4 abort, 0 clean
+  cap  2048 MiB -> 0 segfault, 4 abort, 0 clean
+  cap  3072 MiB -> 4 segfault, 0 abort, 0 clean
+  cap  4096 MiB -> 0 segfault, 4 abort, 0 clean
+
+4 segfaults. A caught MemoryError left the program in a state Python calls
+recoverable; gc.collect() then crashed instead of raising.
+
+------------------------------------------------------------------------------
+CPython — exit 0 (1344.6s)
+------------------------------------------------------------------------------
+cpython 3.14.3
+running minimal.py under a range of RLIMIT_AS caps, 4 runs each
+
+  cap  1024 MiB -> 0 segfault, 0 abort, 4 clean
+  cap  1536 MiB -> 0 segfault, 0 abort, 4 clean
+  cap  2048 MiB -> 0 segfault, 0 abort, 4 clean
+  cap  3072 MiB -> 0 segfault, 0 abort, 4 clean
+  cap  4096 MiB -> 0 segfault, 0 abort, 4 clean
+
+No segfault at any cap. The window depends on where this build's own reservations
+sit -- try more caps, or run minimal.py directly under `ulimit -v`.

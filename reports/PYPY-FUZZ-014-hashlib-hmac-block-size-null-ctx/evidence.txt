@@ -1,0 +1,52 @@
+PYPY-FUZZ-014 — `HMAC.block_size` on a NULL ctx
+==============================================================================
+
+Captured by scripts/capture_evidence.py. Reliability: deterministic (4/4 failing-construction cases).
+Needs an address-space limit: no.
+
+PyPy    : Python 3.11.15 (194f9f44b505, May 25 2026, 19:34:11) [PyPy 7.3.23 with GCC 10.2.1 20210130 (Red Hat 10.2.1-11)]
+CPython : Python 3.14.3 (main, Mar 3 2026, 14:59:53) [Clang 21.1.4 ]
+Command : <interpreter> -u repro.py
+
+The exit status below is the REPRODUCER DRIVER's, not the finding's. Most drivers exit
+1 when the bug reproduces; the differential-table drivers (PYPY-FUZZ-001/008) exit 0
+when every measured outcome matched what the record documents -- crashes included. Read
+the body, not the status.
+
+------------------------------------------------------------------------------
+PyPy — exit 1 (5.2s)
+------------------------------------------------------------------------------
+pypy 3.11.15
+
+construction                   expected   reading .block_size
+-------------------------------------------------------------
+__init__(0)                    SIGSEGV    SIGSEGV
+__init__('a')                  SIGSEGV    SIGSEGV
+__init__(b'a')                 SIGSEGV    SIGSEGV
+__init__('nosuchdigest')       SIGSEGV    SIGSEGV
+no __init__ at all             safe       AttributeError
+__init__() (name=None)         safe       AttributeError
+__init__('sha256') (valid)     safe       block_size = 64
+
+A constructor that raises leaves self.ctx == ffi.NULL, and block_size hands
+that NULL to OpenSSL's HMAC_CTX_get_md before checking anything.
+
+------------------------------------------------------------------------------
+CPython — exit 0 (0.4s)
+------------------------------------------------------------------------------
+cpython 3.14.3
+
+construction                   expected   reading .block_size
+-------------------------------------------------------------
+__init__(0)                    SIGSEGV    TypeError
+__init__('a')                  SIGSEGV    TypeError
+__init__(b'a')                 SIGSEGV    TypeError
+__init__('nosuchdigest')       SIGSEGV    TypeError
+no __init__ at all             safe       TypeError
+__init__() (name=None)         safe       TypeError
+__init__('sha256') (valid)     safe       TypeError
+
+This interpreter forbids constructing _hashlib.HMAC from Python at all
+(TypeError on every row), so the half-initialized state is unreachable here.
+That is CPython's behaviour, and it is why there is no CPython differential:
+the bug needs an object that survives its own failed __init__.

@@ -1,0 +1,30 @@
+{
+  "id": "PYPY-FUZZ-010",
+  "slug": "sigill-after-fork-from-thread",
+  "title": "SIGILL in the child after `fork()` from a non-main thread, inside `threading._after_fork`",
+  "short_title": "SIGILL after fork-from-a-thread",
+  "kind": "sigill",
+  "signatures": [
+    "lib/pypy3.11/_weakrefset.py:122 (discard)",
+    "lib/pypy3.11/threading.py:1630 (_after_fork)",
+    "lib/pypy3.11/multiprocessing/popen_fork.py:62 (_launch, its os.fork())"
+  ],
+  "one_line_repro": "see repro.py -- concurrent multiprocessing.popen_fork.Popen() from worker threads",
+  "repro": "repro.py",
+  "evidence": "evidence.txt",
+  "status": "reproduced",
+  "reliability": "12/12 on the original script, 3/12 on the 109-line reduction (a race)",
+  "needs_rlimit": true,
+  "reduced_from": "11735-line generated script -> 109 lines",
+  "confirmed_build": "PyPy 7.3.23 (194f9f44b505, Python 3.11.15)",
+  "cpython_oracle": "CPython 3.14.3",
+  "found_by": [
+    "fusil, fleet_05 and fleet_06 (broad stdlib)"
+  ],
+  "defect_class": "crash-after-fork-from-thread",
+  "shared_with_cpython": false,
+  "cpython_behavior": "clean, every run",
+  "prior_art": "Unreported. The only SIGILL of the whole campaign, across six fleets.",
+  "leak_signature": "Fatal Python error: Illegal instruction",
+  "notes": "`_launch` line 62 is its `os.fork()`. PyPy runs the after-fork hooks in the CHILD, so `threading._after_fork()` executes there and dies walking a weakref set. The whole stack is ordinary Python; an illegal instruction underneath it means either an RPython `ll_assert` compiled to a trap or JIT-emitted code running in a state that no longer holds -- and forking away from a multi-threaded, JIT-warm process is exactly such a state. The trigger includes re-running `__init__` on an ALREADY-CONSTRUCTED Popen: the parent side of `_launch` succeeds even when the argument is not a Process, because the child raises in `process_obj._bootstrap` and `os._exit()`s, which the parent never sees. Three hand-written minimal attempts all failed to reproduce it, including one that does exactly what the reduction does -- see the report."
+}

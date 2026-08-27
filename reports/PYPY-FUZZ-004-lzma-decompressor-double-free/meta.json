@@ -1,0 +1,29 @@
+{
+  "id": "PYPY-FUZZ-004",
+  "slug": "lzma-decompressor-double-free",
+  "title": "`_lzma` frees a buffer and then stores a name that does not exist, leaving the pointer dangling",
+  "short_title": "`_lzma` double free",
+  "kind": "abort",
+  "signatures": [
+    "lib_pypy/_lzma.py:~562 (post_decompress_avail_data)",
+    "lib_pypy/_lzma.py:~575 (clear_input_buffer)"
+  ],
+  "one_line_repro": "see repro.py -- LZMADecompressor operations that free and then re-touch the input buffer",
+  "repro": "repro.py",
+  "evidence": "evidence.txt",
+  "status": "reproduced",
+  "reliability": "deterministic",
+  "needs_rlimit": false,
+  "reduced_from": "fleet dirs -> ~10 lines",
+  "confirmed_build": "PyPy 7.3.23 (194f9f44b505, Python 3.11.15)",
+  "cpython_oracle": "CPython 3.14.3",
+  "found_by": [
+    "fusil, fleet_03 (broad stdlib)"
+  ],
+  "defect_class": "dangling-pointer-after-free",
+  "shared_with_cpython": false,
+  "cpython_behavior": "n/a -- CPython's _lzma is C, not this cffi wrapper",
+  "prior_art": "Seeded in pypy-review-toolkit's catalog as PYPY-FUZZ-004. Unreported upstream.",
+  "leak_signature": "double free or corruption (!prev) / (out)",
+  "notes": "Two defects in one file. The first is a one-character-class typo: after `m.free()` the code assigns `ffi.NONE`, which does not exist (the cffi sentinel is `ffi.NULL`), so the assignment raises and the old, freed pointer stays in place -- a dangling pointer by accident rather than by omission. The second is an unlocked check-then-act in `clear_input_buffer`. PYPY-FUZZ-014 is the mirror image in the same cffi-stdlib family: there the sentinel IS assigned and then dereferenced."
+}

@@ -1,0 +1,36 @@
+PYPY-FUZZ-004 — `_lzma` double free
+==============================================================================
+
+Captured by scripts/capture_evidence.py. Reliability: deterministic.
+Needs an address-space limit: no.
+
+PyPy    : Python 3.11.15 (194f9f44b505, May 25 2026, 19:34:11) [PyPy 7.3.23 with GCC 10.2.1 20210130 (Red Hat 10.2.1-11)]
+CPython : Python 3.14.3 (main, Mar 3 2026, 14:59:53) [Clang 21.1.4 ]
+Command : <interpreter> -u repro.py
+
+The exit status below is the REPRODUCER DRIVER's, not the finding's. Most drivers exit
+1 when the bug reproduces; the differential-table drivers (PYPY-FUZZ-001/008) exit 0
+when every measured outcome matched what the record documents -- crashes included. Read
+the body, not the status.
+
+------------------------------------------------------------------------------
+PyPy — SIGABRT (1.2s)
+------------------------------------------------------------------------------
+pypy 3.11.15
+ffi.NONE exists: False (the typo at _lzma.py:562)
+input buffer allocated: <cdata 'uint8_t *' 0x69f5b0> size: 146
+post_decompress_avail_data -> AttributeError : '_cffi_backend.FFI' object has no attribute 'NONE'
+buffer AFTER the free branch: <cdata 'uint8_t *' 0x69f5b0>
+  same pointer as before the free: True
+  is it ffi.NULL (as intended)?  False
+
+calling clear_input_buffer() -- frees that stale pointer again ...
+free(): double free detected in tcache 2
+
+------------------------------------------------------------------------------
+CPython — exit 1 (0.0s)
+------------------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/danzin/projects/pypy-findings/reports/PYPY-FUZZ-004-lzma-decompressor-double-free/repro.py", line 55, in <module>
+    from _lzma import ffi
+ImportError: cannot import name 'ffi' from '_lzma' (unknown location)

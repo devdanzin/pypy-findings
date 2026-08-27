@@ -1,0 +1,14 @@
+name: validate
+on: [push, pull_request]
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      # Schema + evidence-grade checks, and a guard that no generated file has
+      # been hand-edited away from what regen_derived.py produces.
+      - run: python scripts/validate_records.py
+      - run: python scripts/regen_derived.py --check

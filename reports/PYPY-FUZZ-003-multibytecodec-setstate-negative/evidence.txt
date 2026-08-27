@@ -1,0 +1,152 @@
+PYPY-FUZZ-003 — `setstate(-1)` leaks InvalidSignednessError
+==============================================================================
+
+Captured by scripts/capture_evidence.py. Reliability: deterministic.
+Needs an address-space limit: no.
+
+PyPy    : Python 3.11.15 (194f9f44b505, May 25 2026, 19:34:11) [PyPy 7.3.23 with GCC 10.2.1 20210130 (Red Hat 10.2.1-11)]
+CPython : Python 3.14.3 (main, Mar 3 2026, 14:59:53) [Clang 21.1.4 ]
+Command : <interpreter> -u repro.py
+
+The exit status below is the REPRODUCER DRIVER's, not the finding's. Most drivers exit
+1 when the bug reproduces; the differential-table drivers (PYPY-FUZZ-001/008) exit 0
+when every measured outcome matched what the record documents -- crashes included. Read
+the body, not the status.
+
+------------------------------------------------------------------------------
+PyPy — exit 1 (0.0s)
+------------------------------------------------------------------------------
+pypy 3.11.15
+
+-- minimal case --
+  codecs.getincrementalencoder('cp949')().setstate(-1)
+    -> RPYTHON LEAK -> SystemError: unexpected internal exception (please report a bug): <Invali
+
+-- every multibyte encoder --
+  big5             RPYTHON LEAK -> SystemError: unexpected internal exception (please report a bug): <Invali
+  cp932            RPYTHON LEAK -> SystemError: unexpected internal exception (please report a bug): <Invali
+  cp949            RPYTHON LEAK -> SystemError: unexpected internal exception (please report a bug): <Invali
+  euc_jp           RPYTHON LEAK -> SystemError: unexpected internal exception (please report a bug): <Invali
+  euc_kr           RPYTHON LEAK -> SystemError: unexpected internal exception (please report a bug): <Invali
+  gb18030          RPYTHON LEAK -> SystemError: unexpected internal exception (please report a bug): <Invali
+  gb2312           RPYTHON LEAK -> SystemError: unexpected internal exception (please report a bug): <Invali
+  hz               RPYTHON LEAK -> SystemError: unexpected internal exception (please report a bug): <Invali
+  iso2022_jp       RPYTHON LEAK -> SystemError: unexpected internal exception (please report a bug): <Invali
+  johab            RPYTHON LEAK -> SystemError: unexpected internal exception (please report a bug): <Invali
+  shift_jis        RPYTHON LEAK -> SystemError: unexpected internal exception (please report a bug): <Invali
+  shift_jisx0213   RPYTHON LEAK -> SystemError: unexpected internal exception (please report a bug): <Invali
+
+-- StreamWriter (wraps the same encoder) --
+  cp949 -> RPYTHON LEAK -> SystemError: unexpected internal exception (please report a bug): <Invali
+
+-- decoders (tuple state) are unaffected --
+  cp949 -> TypeError: expected bytes, got int object
+
+-- rbigint.tobytes is guarded elsewhere --
+  (-1).to_bytes(4, 'little') -> OverflowError: can't convert negative int to unsigned
+
+12/12 encoders leak the RPython exception
+RPython traceback:
+  File "pypy_interpreter.c", line 53929, in BuiltinCode2_fastcall_2
+  File "implement_7.c", line 35449, in fastfunc_setstate_w_2_2
+  File "pypy_module__multibytecodec.c", line 4608, in MultibyteIncrementalEncoder_setstate_w
+  File "rpython_rlib.c", line 8326, in rbigint_tobytes
+RPython traceback:
+  File "pypy_interpreter.c", line 53929, in BuiltinCode2_fastcall_2
+  File "implement_7.c", line 35449, in fastfunc_setstate_w_2_2
+  File "pypy_module__multibytecodec.c", line 4608, in MultibyteIncrementalEncoder_setstate_w
+  File "rpython_rlib.c", line 8326, in rbigint_tobytes
+RPython traceback:
+  File "pypy_interpreter.c", line 53929, in BuiltinCode2_fastcall_2
+  File "implement_7.c", line 35449, in fastfunc_setstate_w_2_2
+  File "pypy_module__multibytecodec.c", line 4608, in MultibyteIncrementalEncoder_setstate_w
+  File "rpython_rlib.c", line 8326, in rbigint_tobytes
+RPython traceback:
+  File "pypy_interpreter.c", line 53929, in BuiltinCode2_fastcall_2
+  File "implement_7.c", line 35449, in fastfunc_setstate_w_2_2
+  File "pypy_module__multibytecodec.c", line 4608, in MultibyteIncrementalEncoder_setstate_w
+  File "rpython_rlib.c", line 8326, in rbigint_tobytes
+RPython traceback:
+  File "pypy_interpreter.c", line 53929, in BuiltinCode2_fastcall_2
+  File "implement_7.c", line 35449, in fastfunc_setstate_w_2_2
+  File "pypy_module__multibytecodec.c", line 4608, in MultibyteIncrementalEncoder_setstate_w
+  File "rpython_rlib.c", line 8326, in rbigint_tobytes
+RPython traceback:
+  File "pypy_interpreter.c", line 53929, in BuiltinCode2_fastcall_2
+  File "implement_7.c", line 35449, in fastfunc_setstate_w_2_2
+  File "pypy_module__multibytecodec.c", line 4608, in MultibyteIncrementalEncoder_setstate_w
+  File "rpython_rlib.c", line 8326, in rbigint_tobytes
+RPython traceback:
+  File "pypy_interpreter.c", line 53929, in BuiltinCode2_fastcall_2
+  File "implement_7.c", line 35449, in fastfunc_setstate_w_2_2
+  File "pypy_module__multibytecodec.c", line 4608, in MultibyteIncrementalEncoder_setstate_w
+  File "rpython_rlib.c", line 8326, in rbigint_tobytes
+RPython traceback:
+  File "pypy_interpreter.c", line 53929, in BuiltinCode2_fastcall_2
+  File "implement_7.c", line 35449, in fastfunc_setstate_w_2_2
+  File "pypy_module__multibytecodec.c", line 4608, in MultibyteIncrementalEncoder_setstate_w
+  File "rpython_rlib.c", line 8326, in rbigint_tobytes
+RPython traceback:
+  File "pypy_interpreter.c", line 53929, in BuiltinCode2_fastcall_2
+  File "implement_7.c", line 35449, in fastfunc_setstate_w_2_2
+  File "pypy_module__multibytecodec.c", line 4608, in MultibyteIncrementalEncoder_setstate_w
+  File "rpython_rlib.c", line 8326, in rbigint_tobytes
+RPython traceback:
+  File "pypy_interpreter.c", line 53929, in BuiltinCode2_fastcall_2
+  File "implement_7.c", line 35449, in fastfunc_setstate_w_2_2
+  File "pypy_module__multibytecodec.c", line 4608, in MultibyteIncrementalEncoder_setstate_w
+  File "rpython_rlib.c", line 8326, in rbigint_tobytes
+RPython traceback:
+  File "pypy_interpreter.c", line 53929, in BuiltinCode2_fastcall_2
+  File "implement_7.c", line 35449, in fastfunc_setstate_w_2_2
+  File "pypy_module__multibytecodec.c", line 4608, in MultibyteIncrementalEncoder_setstate_w
+  File "rpython_rlib.c", line 8326, in rbigint_tobytes
+RPython traceback:
+  File "pypy_interpreter.c", line 53929, in BuiltinCode2_fastcall_2
+  File "implement_7.c", line 35449, in fastfunc_setstate_w_2_2
+  File "pypy_module__multibytecodec.c", line 4608, in MultibyteIncrementalEncoder_setstate_w
+  File "rpython_rlib.c", line 8326, in rbigint_tobytes
+RPython traceback:
+  File "pypy_interpreter.c", line 53929, in BuiltinCode2_fastcall_2
+  File "implement_7.c", line 35449, in fastfunc_setstate_w_2_2
+  File "pypy_module__multibytecodec.c", line 4608, in MultibyteIncrementalEncoder_setstate_w
+  File "rpython_rlib.c", line 8326, in rbigint_tobytes
+RPython traceback:
+  File "pypy_interpreter.c", line 53929, in BuiltinCode2_fastcall_2
+  File "implement_7.c", line 35449, in fastfunc_setstate_w_2_2
+  File "pypy_module__multibytecodec
+... (truncated)
+
+------------------------------------------------------------------------------
+CPython — exit 0 (0.0s)
+------------------------------------------------------------------------------
+cpython 3.14.3
+
+-- minimal case --
+  codecs.getincrementalencoder('cp949')().setstate(-1)
+    -> OverflowError: can't convert negative int to unsigned
+
+-- every multibyte encoder --
+  big5             OverflowError: can't convert negative int to unsigned
+  cp932            OverflowError: can't convert negative int to unsigned
+  cp949            OverflowError: can't convert negative int to unsigned
+  euc_jp           OverflowError: can't convert negative int to unsigned
+  euc_kr           OverflowError: can't convert negative int to unsigned
+  gb18030          OverflowError: can't convert negative int to unsigned
+  gb2312           OverflowError: can't convert negative int to unsigned
+  hz               OverflowError: can't convert negative int to unsigned
+  iso2022_jp       OverflowError: can't convert negative int to unsigned
+  johab            OverflowError: can't convert negative int to unsigned
+  shift_jis        OverflowError: can't convert negative int to unsigned
+  shift_jisx0213   OverflowError: can't convert negative int to unsigned
+
+-- StreamWriter (wraps the same encoder) --
+  cp949 -> AttributeError: '_io.BytesIO' object has no attribute 'setstate'
+
+-- decoders (tuple state) are unaffected --
+  cp949 -> TypeError: setstate(): illegal state argument
+
+-- rbigint.tobytes is guarded elsewhere --
+  (-1).to_bytes(4, 'little') -> OverflowError: can't convert negative int to unsigned
+
+0/12 encoders leak the RPython exception

@@ -1,0 +1,29 @@
+{
+  "id": "PYPY-FUZZ-001",
+  "slug": "compile-bytes-number-invalid-utf8-abort",
+  "title": "`compile()` of bytes source aborts the interpreter when a digit is followed by an invalid UTF-8 byte",
+  "short_title": "`compile(b\"0\\x80\")` aborts",
+  "kind": "abort",
+  "signatures": [
+    "pypy_interpreter_pyparser.c:25296 (_maybe_raise_number_error)",
+    "pypy_interpreter_pyparser.c:30295 (raise_invalid_unicode_char)"
+  ],
+  "one_line_repro": "compile(b\"0\\x80\", \"<s>\", \"exec\")",
+  "repro": "repro.py",
+  "evidence": "evidence.txt",
+  "status": "reproduced",
+  "reliability": "deterministic",
+  "needs_rlimit": false,
+  "reduced_from": "12742-line generated script (cProfile.runctx) -> 2 bytes",
+  "confirmed_build": "PyPy 7.3.23 (194f9f44b505, Python 3.11.15)",
+  "cpython_oracle": "CPython 3.14.3",
+  "found_by": [
+    "fusil, fleet_02/03 (broad stdlib)"
+  ],
+  "defect_class": "out-of-range-codepoint-from-invalid-utf8",
+  "shared_with_cpython": false,
+  "cpython_behavior": "raises a clean SyntaxError",
+  "prior_art": "Seeded in pypy-review-toolkit's catalog as PYPY-FUZZ-001. An RPython AssertionError escaping generate_tokens is a recurring class -- pypy#4002 and pypy#5076 (trailing backslash, fixed in #5708) are earlier instances; the #5076 trigger no longer crashes on 7.3.23. This trigger is different: it goes through the NUMBER error path, which those did not.",
+  "leak_signature": "Fatal RPython error: AssertionError",
+  "notes": "A source given as BYTES whose first token is a NUMBER, immediately followed by a byte that cannot begin a valid UTF-8 sequence. Both halves are required: `b\"a\\x80\"` and `b\"\\x80\"` both raise cleanly. Measured exhaustively over all 256 values of the byte after a digit, the outcome splits exactly along the UTF-8 validity classes: 0x80-0xC1 plus 0xE0 and 0xF0 abort, 0xF5-0xFF leak a KeyError (PYPY-FUZZ-008), everything else raises SyntaxError. Reaches every compilation entry point that accepts bytes -- compile(), exec(), eval() -- so any program that compiles untrusted bytes can be aborted by a 2-byte input. It cannot be caught: it is a hard abort, not an exception."
+}

@@ -1,0 +1,48 @@
+PYPY-FUZZ-012 — formatting a SyntaxError leaks CheckError
+==============================================================================
+
+Captured by scripts/capture_evidence.py. Reliability: deterministic (6/6 rows on PyPy, 0/6 on CPython).
+Needs an address-space limit: no.
+
+PyPy    : Python 3.11.15 (194f9f44b505, May 25 2026, 19:34:11) [PyPy 7.3.23 with GCC 10.2.1 20210130 (Red Hat 10.2.1-11)]
+CPython : Python 3.14.3 (main, Mar 3 2026, 14:59:53) [Clang 21.1.4 ]
+Command : <interpreter> -u repro.py
+
+The exit status below is the REPRODUCER DRIVER's, not the finding's. Most drivers exit
+1 when the bug reproduces; the differential-table drivers (PYPY-FUZZ-001/008) exit 0
+when every measured outcome matched what the record documents -- crashes included. Read
+the body, not the status.
+
+------------------------------------------------------------------------------
+PyPy — exit 1 (0.4s)
+------------------------------------------------------------------------------
+pypy 3.11.15
+
+case                           source           filename         result
+-----------------------------------------------------------------------
+minimal: 1 byte each           b'\xff'          b'\x80'          LEAK
+as found by the fuzzer         b'abc\xe9\xff'   b'\xc1\x92\xdf'  LEAK
+another pair                   b'a\xe9'         b'\xff'          LEAK
+valid-UTF-8 source (control)   b'('             b'\xc1\x92\xdf'  CLEAN
+valid-UTF-8 filename (control) b'abc\xe9\xff'   'f.py'           CLEAN
+both valid (control)           b'('             'f.py'           CLEAN
+
+An RPython-internal CheckError reached application level as SystemError.
+CPython formats every one of these exceptions cleanly.
+
+------------------------------------------------------------------------------
+CPython — exit 0 (0.3s)
+------------------------------------------------------------------------------
+cpython 3.14.3
+
+case                           source           filename         result
+-----------------------------------------------------------------------
+minimal: 1 byte each           b'\xff'          b'\x80'          CLEAN
+as found by the fuzzer         b'abc\xe9\xff'   b'\xc1\x92\xdf'  CLEAN
+another pair                   b'a\xe9'         b'\xff'          CLEAN
+valid-UTF-8 source (control)   b'('             b'\xc1\x92\xdf'  CLEAN
+valid-UTF-8 filename (control) b'abc\xe9\xff'   'f.py'           CLEAN
+both valid (control)           b'('             'f.py'           CLEAN
+
+3 case(s) differ from PyPy 7.3.23. On CPython every row reads CLEAN, which is
+the expected result there.
