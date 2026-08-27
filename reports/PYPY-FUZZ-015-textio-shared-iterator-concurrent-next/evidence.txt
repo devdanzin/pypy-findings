@@ -1,0 +1,60 @@
+PYPY-FUZZ-015 — concurrent next() on a shared file iterator
+==============================================================================
+
+Captured by scripts/capture_evidence.py. Reliability: 3-6/6 depending on stream and machine load; a race, so the driver reports a rate. Two threads suffice.
+Needs an address-space limit: no.
+
+PyPy    : Python 3.11.15 (194f9f44b505, May 25 2026, 19:34:11) [PyPy 7.3.23 with GCC 10.2.1 20210130 (Red Hat 10.2.1-11)]
+CPython : Python 3.14.3 (main, Mar 3 2026, 14:59:53) [Clang 21.1.4 ]
+Command : <interpreter> -u repro.py
+
+The exit status below is the REPRODUCER DRIVER's, not the finding's. Most drivers exit
+1 when the bug reproduces; the differential-table drivers (PYPY-FUZZ-001/008) exit 0
+when every measured outcome matched what the record documents -- crashes included. Read
+the body, not the status.
+
+------------------------------------------------------------------------------
+PyPy — exit 1 (48.8s)
+------------------------------------------------------------------------------
+pypy 3.11.15
+
+stream                         expected   SIGSEGV
+-------------------------------------------------
+sys.__stdin__                  yes        6/6
+open("/dev/null")              yes        6/6
+open(<1-line file>)            yes        6/6
+os.fdopen(os.open(...))        yes        6/6
+TextIOWrapper(BytesIO)         no         0/6
+BufferedReader(FileIO)         no         0/6
+
+thread count, on open("/dev/null"):
+  2 threads -> 4/4
+  3 threads -> 4/4
+  4 threads -> 4/4
+  8 threads -> 4/4
+
+Concurrent next() on one file iterator faults. It needs BOTH the text layer
+and a real file descriptor: neither half alone reproduces it.
+
+------------------------------------------------------------------------------
+CPython — exit 0 (1.6s)
+------------------------------------------------------------------------------
+cpython 3.14.3
+
+stream                         expected   SIGSEGV
+-------------------------------------------------
+sys.__stdin__                  yes        0/6
+open("/dev/null")              yes        0/6
+open(<1-line file>)            yes        0/6
+os.fdopen(os.open(...))        yes        0/6
+TextIOWrapper(BytesIO)         no         0/6
+BufferedReader(FileIO)         no         0/6
+
+thread count, on open("/dev/null"):
+  2 threads -> 0/4
+  3 threads -> 0/4
+  4 threads -> 0/4
+  8 threads -> 0/4
+
+No faults. On CPython this is the expected result -- concurrent iteration there is
+unspecified but does not crash.

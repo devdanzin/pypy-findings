@@ -11,7 +11,7 @@ overlap, both records say so.
 
 ## The findings
 
-**14 findings, all reproduced.** [**INDEX.md**](INDEX.md) is the table;
+**15 findings, all reproduced.** [**INDEX.md**](INDEX.md) is the table;
 [`catalog/known_bugs.tsv`](catalog/known_bugs.tsv) is the machine-readable form.
 
 Reproduced on **PyPy 7.3.23** (`194f9f44b505`, Python 3.11.15), with **CPython 3.14.3** as the
@@ -33,6 +33,9 @@ Highlights:
 - **`PYPY-FUZZ-006` / `007` / `009`** — three *different* things happen at an address-space
   limit: PyPy's intended clean `out of memory` abort, a SIGSEGV, and glibc reporting heap
   corruption. Only the first is correct.
+- **`PYPY-FUZZ-015`** — two threads sharing `for line in f` segfault at EOF. Ordinary code,
+  no fuzzer scaffolding. It needs the text layer *and* a real file descriptor: neither
+  `TextIOWrapper(BytesIO)` nor `BufferedReader(FileIO)` reproduces it alone.
 
 ## The recurring shape
 
@@ -98,7 +101,7 @@ See [`MINTING.md`](MINTING.md) for what earns an id.
 
 ## Status
 
-**None of these 14 are filed upstream.** Five (`001`–`005`) are seeded in
+**None of these 15 are filed upstream.** Five (`001`–`005`) are seeded in
 `pypy-review-toolkit`'s catalog as `PYPY-FUZZ-001..005`; `005` is additionally pinned to a
 source line by `pypy-review-findings` as `PYPYR-0001`, with `PYPYR-0002` recording a second
 route to the same site that this catalog's reproducer does not exercise.

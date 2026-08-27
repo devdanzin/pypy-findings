@@ -424,4 +424,47 @@ RECORDS = [
                  "state this object passes through. Mirror image of PYPY-FUZZ-004 in the same cffi-stdlib "
                  "family: that assigns a DANGLING pointer after freeing, this assigns NULL and dereferences it.",
     ),
+    dict(
+        id="PYPY-FUZZ-015", slug="textio-shared-iterator-concurrent-next",
+        title="Two threads calling `next()` on one file iterator segfault at EOF",
+        short="concurrent next() on a shared file iterator",
+        kind="segv",
+        sites=[],
+        repro='import threading\nf = open("/dev/null")\nit = iter(f)\n'
+              'def w():\n    for _ in range(200):\n        try: next(it)\n'
+              '        except Exception: pass\n'
+              'ts = [threading.Thread(target=w) for _ in range(2)]\n'
+              'for t in ts: t.start()\nfor t in ts: t.join()',
+        repro_file="repro.py",
+        status="reproduced",
+        reliability="3-6/6 depending on stream and machine load; a race, so the driver reports "
+                    "a rate. Two threads suffice",
+        needs_rlimit=False,
+        reduced_from="1739-line generated script -> 335 lines (10/10) -> ~10 lines by hand",
+        found_by=["fusil, fleet_08 (--concurrency-stress variant)"],
+        defect_class="unsynchronised-text-layer-at-eof",
+        shared_with_cpython=False,
+        cpython_behavior="does not crash; concurrent iteration is unspecified there but raises "
+                         "or returns interleaved lines",
+        prior_art="Unreported.",
+        leak_signature="Segmentation fault",
+        analysis="Ordinary code -- `for line in f` shared between threads -- with no ctypes, no "
+                 "address-space limit and no fuzzer scaffolding. TWO conditions are both "
+                 "required, and neither reproduces alone. (1) The threads must actually EXHAUST "
+                 "the iterator: a 5000-line file over 200 iterations is 0/6, the same file over "
+                 "20000 iterations is 6/6, so the fault is at end-of-file rather than during "
+                 "steady-state reading. (2) The stream must be the TEXT layer over a REAL file "
+                 "descriptor: sys.__stdin__, open(...) and os.fdopen(...) all fault, while "
+                 "io.TextIOWrapper(io.BytesIO(...)) (text layer, no fd) and "
+                 "io.BufferedReader(io.FileIO(...)) (fd, no text layer) are both clean. That "
+                 "split suggests the mechanism: PyPy releases the GIL around the real read() "
+                 "syscall, so two threads can be inside TextIOWrapper.__next__ at once and race "
+                 "its decoder/readahead state, where a BytesIO never releases the GIL and a "
+                 "BufferedReader has no text-decoding state to corrupt. If that is right it is a "
+                 "missing lock around the text layer's buffer, and the GIL -- which makes most "
+                 "PyPy threading safe by accident -- is exactly what stops protecting it here. "
+                 "Found by --concurrency-stress, a mode whose own generated scripts print "
+                 "\"GIL enabled; running serialised\" and which was expected to find deadlocks "
+                 "and re-entrancy rather than anything race-shaped.",
+    ),
 ]

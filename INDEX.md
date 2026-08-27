@@ -2,7 +2,7 @@
 
 > Generated from `records.py` by `scripts/regen_derived.py`. Do not hand-edit.
 
-14 findings, all reproduced on PyPy 7.3.23 (194f9f44b505, Python 3.11.15), with CPython 3.14.3 as the differential oracle.
+15 findings, all reproduced on PyPy 7.3.23 (194f9f44b505, Python 3.11.15), with CPython 3.14.3 as the differential oracle.
 
 | id | kind | short title | reliability | reduced from |
 |---|---|---|---|---|
@@ -20,6 +20,7 @@
 | [`PYPY-FUZZ-012`](reports/PYPY-FUZZ-012-format-syntaxerror-non-utf8-checkerror/report.md) | SystemError leak | formatting a SyntaxError leaks CheckError | deterministic (6/6 rows on PyPy, 0/6 on CPython) | 12748-line generated script -> 752 -> 53 lines -> 2 bytes |
 | [`PYPY-FUZZ-013`](reports/PYPY-FUZZ-013-io-bufferedrwpair-uninitialized-segv/report.md) | SIGSEGV | uninitialized `BufferedRWPair` | deterministic | 27 fleet dirs, all one signature -> 1 line |
 | [`PYPY-FUZZ-014`](reports/PYPY-FUZZ-014-hashlib-hmac-block-size-null-ctx/report.md) | SIGSEGV | `HMAC.block_size` on a NULL ctx | deterministic (4/4 failing-construction cases) | 13 fleet dirs, all one signature -> 4 lines |
+| [`PYPY-FUZZ-015`](reports/PYPY-FUZZ-015-textio-shared-iterator-concurrent-next/report.md) | SIGSEGV | concurrent next() on a shared file iterator | 3-6/6 depending on stream and machine load; a race, so the driver reports a rate. Two threads suffice | 1739-line generated script -> 335 lines (10/10) -> ~10 lines by hand |
 
 ## By defect class
 
@@ -28,4 +29,5 @@
 - **`dangling-pointer-after-free`** (1) — `PYPY-FUZZ-004`
 - **`missing-sibling-guard`** (4) — `PYPY-FUZZ-005`, `PYPY-FUZZ-011`, `PYPY-FUZZ-013`, `PYPY-FUZZ-014`
 - **`out-of-range-codepoint-from-invalid-utf8`** (3) — `PYPY-FUZZ-001`, `PYPY-FUZZ-008`, `PYPY-FUZZ-012`
+- **`unsynchronised-text-layer-at-eof`** (1) — `PYPY-FUZZ-015`
 - **`unvalidated-rpython-helper-call`** (2) — `PYPY-FUZZ-002`, `PYPY-FUZZ-003`
