@@ -6,7 +6,7 @@
 |---|---|
 | **Kind** | SIGSEGV |
 | **Status** | `reproduced` |
-| **Reliability** | 3-6/6 depending on stream and machine load; a race, so the driver reports a rate. Two threads suffice |
+| **Reliability** | a race, so a rate rather than a verdict. Minimal 2-thread form: 3-6/6 single runs depending on stream and machine load; wrapped in 20 rounds it is 6/6 (CPython 0/6). The 335-line reduction is 11/12 single runs. Two threads suffice; one thread is 0/4 |
 | **Needs an address-space limit** | no |
 | **Site(s)** | _not pinned — see below_ |
 | **Confirmed on** | PyPy 7.3.23 (194f9f44b505, Python 3.11.15) |

@@ -20,7 +20,7 @@
 | [`PYPY-FUZZ-012`](reports/PYPY-FUZZ-012-format-syntaxerror-non-utf8-checkerror/report.md) | SystemError leak | formatting a SyntaxError leaks CheckError | deterministic (6/6 rows on PyPy, 0/6 on CPython) | 12748-line generated script -> 752 -> 53 lines -> 2 bytes |
 | [`PYPY-FUZZ-013`](reports/PYPY-FUZZ-013-io-bufferedrwpair-uninitialized-segv/report.md) | SIGSEGV | uninitialized `BufferedRWPair` | deterministic | 27 fleet dirs, all one signature -> 1 line |
 | [`PYPY-FUZZ-014`](reports/PYPY-FUZZ-014-hashlib-hmac-block-size-null-ctx/report.md) | SIGSEGV | `HMAC.block_size` on a NULL ctx | deterministic (4/4 failing-construction cases) | 13 fleet dirs, all one signature -> 4 lines |
-| [`PYPY-FUZZ-015`](reports/PYPY-FUZZ-015-textio-shared-iterator-concurrent-next/report.md) | SIGSEGV | concurrent next() on a shared file iterator | 3-6/6 depending on stream and machine load; a race, so the driver reports a rate. Two threads suffice | 1739-line generated script -> 335 lines (10/10) -> ~10 lines by hand |
+| [`PYPY-FUZZ-015`](reports/PYPY-FUZZ-015-textio-shared-iterator-concurrent-next/report.md) | SIGSEGV | concurrent next() on a shared file iterator | a race, so a rate rather than a verdict. Minimal 2-thread form: 3-6/6 single runs depending on stream and machine load; wrapped in 20 rounds it is 6/6 (CPython 0/6). The 335-line reduction is 11/12 single runs. Two threads suffice; one thread is 0/4 | 1739-line generated script -> 335 lines (10/10) -> ~10 lines by hand |
 
 ## By defect class
 

@@ -437,8 +437,10 @@ RECORDS = [
               'for t in ts: t.start()\nfor t in ts: t.join()',
         repro_file="repro.py",
         status="reproduced",
-        reliability="3-6/6 depending on stream and machine load; a race, so the driver reports "
-                    "a rate. Two threads suffice",
+        reliability="a race, so a rate rather than a verdict. Minimal 2-thread form: 3-6/6 "
+                    "single runs depending on stream and machine load; wrapped in 20 rounds it "
+                    "is 6/6 (CPython 0/6). The 335-line reduction is 11/12 single runs. Two "
+                    "threads suffice; one thread is 0/4",
         needs_rlimit=False,
         reduced_from="1739-line generated script -> 335 lines (10/10) -> ~10 lines by hand",
         found_by=["fusil, fleet_08 (--concurrency-stress variant)"],
