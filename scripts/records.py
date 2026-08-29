@@ -527,8 +527,10 @@ RECORDS = [
                  "The class already knows the entry can be None: `descr_reduce` writes "
                  "`iterator if iterator is not None else space.newtuple([])` a dozen lines above. "
                  "By git history the read has been reachable since release-pypy3.9-v7.3.10 (28 release "
-                 "tags); only 7.3.23 was tested. The file is byte-identical between the 7.3.23 tag and "
-                 "main at fe2af5843a (2026-08-18) apart from an unrelated `tee` change, so it is live on "
-                 "main. Fix is a None check at the read, matching what descr_reduce already does.",
+                 "tags); only 7.3.23 was tested. It is live on main: interp_itertools.py is byte-identical "
+                 "between the 7.3.23 tag and fe2af5843a (2026-08-18) apart from an unrelated `tee` change, "
+                 "and the rest of the call path is untouched too -- objspace/std/listobject.py and "
+                 "setobject.py have no diff at all, and baseobjspace.py's diff contains no greenkey line. "
+                 "Fix is a None check at the read, matching what descr_reduce already does.",
     ),
 ]

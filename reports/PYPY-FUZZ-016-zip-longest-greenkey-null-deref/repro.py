@@ -78,8 +78,10 @@ can be None -- `descr_reduce`, a dozen lines above the faulting read, writes
 `iterator if iterator is not None else space.newtuple([])`.
 
 By git history the read has been reachable since release-pypy3.9-v7.3.10 (28 release tags);
-only 7.3.23 was tested here. The file is byte-identical between the 7.3.23 tag and main at
-fe2af5843a (2026-08-18) apart from an unrelated `tee` change.
+only 7.3.23 was tested here. It is live on main, and not only at the read site:
+interp_itertools.py is byte-identical between the 7.3.23 tag and fe2af5843a (2026-08-18) apart
+from an unrelated `tee` change, objspace/std/listobject.py and setobject.py have no diff at
+all, and baseobjspace.py's diff contains no greenkey line.
 
 FIX
 
