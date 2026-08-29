@@ -31,7 +31,19 @@ StopIteration while others are still active:
                 return space.iterator_greenkey(self.iterators_w[0])   # <-- may be None
             return None
 
-`space.iterator_greenkey(None)` calls a method on a null pointer in translated RPython.
+`space.iterator_greenkey(None)` dereferences a null pointer in translated RPython. That is
+observed, not inferred -- see `gdb.txt`, captured on the three-line reproducer:
+
+    Program received signal SIGSEGV, Segmentation fault.
+    0x... in pypy_g_W_ZipLongest_iterator_greenkey ()
+    rdi            0x0                 0
+    => <pypy_g_W_ZipLongest_iterator_greenkey+47>:  mov    (%rdi),%eax
+    #0  pypy_g_W_ZipLongest_iterator_greenkey
+    #1  pypy_g.do_extend_from_iterable
+    #2  pypy_g_ListStrategy__extend_from_iterable
+
+`mov (%rdi),%eax` with `rdi == 0` is the typeid load at the head of the object, and frame #1 is
+the bulk-unpack caller the source reading predicts.
 
 WHICH CONSUMERS, AND WHY THAT SPLIT IS THE DIAGNOSIS
 

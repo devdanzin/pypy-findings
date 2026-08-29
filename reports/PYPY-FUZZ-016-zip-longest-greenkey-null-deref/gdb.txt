@@ -1,0 +1,10 @@
+
+Program received signal SIGSEGV, Segmentation fault.
+0x00007ffff5c7634f in pypy_g_W_ZipLongest_iterator_greenkey () from /home/danzin/.local/share/uv/python/pypy-3.11.15-linux-x86_64-gnu/bin/libpypy3.11-c.so
+rip            0x7ffff5c7634f      0x7ffff5c7634f <pypy_g_W_ZipLongest_iterator_greenkey+47>
+rdi            0x0                 0
+=> 0x7ffff5c7634f <pypy_g_W_ZipLongest_iterator_greenkey+47>:	mov    (%rdi),%eax
+#0  0x00007ffff5c7634f in pypy_g_W_ZipLongest_iterator_greenkey () from /home/danzin/.local/share/uv/python/pypy-3.11.15-linux-x86_64-gnu/bin/libpypy3.11-c.so
+#1  0x00007ffff5e837df in pypy_g.do_extend_from_iterable () from /home/danzin/.local/share/uv/python/pypy-3.11.15-linux-x86_64-gnu/bin/libpypy3.11-c.so
+#2  0x00007ffff5e32f63 in pypy_g_ListStrategy__extend_from_iterable () from /home/danzin/.local/share/uv/python/pypy-3.11.15-linux-x86_64-gnu/bin/libpypy3.11-c.so
+#3  0x00007ffff54052f5 in pypy_g_BuiltinActivation_UwS_W_ListObject_ObjSpace_W_Ro_4 () from /home/danzin/.local/share/uv/python/pypy-3.11.15-linux-x86_64-gnu/bin/libpypy3.11-c.so
