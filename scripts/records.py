@@ -13,10 +13,9 @@ static-review catalog and carries `reviewed_commit` / `guarded_twin` fields inst
   reduced_from  the size of the generated script the finding came out of. The ratio is the
                 honest measure of how much triage a row represents.
   sites         ONLY where a site is actually known -- a shipped `lib_pypy` / `lib/pypy3.11`
-                path read directly, or the frames PyPy itself prints in an RPython traceback.
-                Left empty rather than guessed: this catalog never read the RPython source at
-                a pinned commit, so it cannot pin interpreter-level line numbers the way the
-                static catalog does.
+                path read directly, the frames PyPy itself prints in an RPython traceback, or
+                (PYPY-FUZZ-016 onward) an RPython source line read in a checkout at the tag the
+                tested binary was built from. Left empty rather than guessed everywhere else.
   needs_rlimit  whether the reproducer needs the child address-space limit fusil applies
                 (`--child-memory-limit-mb`). Four findings are invisible without it.
 """
@@ -426,8 +425,8 @@ RECORDS = [
     ),
     dict(
         id="PYPY-FUZZ-015", slug="textio-shared-iterator-concurrent-next",
-        title="Two threads calling `next()` on one file iterator segfault at EOF",
-        short="concurrent next() on a shared file iterator",
+        title="Two threads calling `next()` on one shared TEXT-stream iterator segfault at EOF",
+        short="concurrent next() on a shared text-stream iterator",
         kind="segv",
         sites=[],
         repro='import threading\nf = open("/dev/null")\nit = iter(f)\n'
@@ -437,10 +436,12 @@ RECORDS = [
               'for t in ts: t.start()\nfor t in ts: t.join()',
         repro_file="repro.py",
         status="reproduced",
-        reliability="a race, so a rate rather than a verdict. Minimal 2-thread form: 3-6/6 "
-                    "single runs depending on stream and machine load; wrapped in 20 rounds it "
-                    "is 6/6 (CPython 0/6). The 335-line reduction is 11/12 single runs. Two "
-                    "threads suffice; one thread is 0/4",
+        reliability="a race, so a rate rather than a verdict, and the rate depends almost "
+                    "entirely on how fast the stream reaches EOF. Driven to exhaustion it is "
+                    "6/6 on both a real file and a BytesIO-backed text layer; left unexhausted "
+                    "it is 0/6 on either. The shipped table reports every cell. Wrapped in 20 "
+                    "rounds the minimal form is 6/6 (CPython 0/6); the 335-line reduction is "
+                    "11/12 single runs. Two threads suffice; one thread is 0/6",
         needs_rlimit=False,
         reduced_from="1739-line generated script -> 335 lines (10/10) -> ~10 lines by hand",
         found_by=["fusil, fleet_08 (--concurrency-stress variant)"],
@@ -451,22 +452,83 @@ RECORDS = [
         prior_art="Unreported.",
         leak_signature="Segmentation fault",
         analysis="Ordinary code -- `for line in f` shared between threads -- with no ctypes, no "
-                 "address-space limit and no fuzzer scaffolding. TWO conditions are both "
-                 "required, and neither reproduces alone. (1) The threads must actually EXHAUST "
-                 "the iterator: a 5000-line file over 200 iterations is 0/6, the same file over "
-                 "20000 iterations is 6/6, so the fault is at end-of-file rather than during "
-                 "steady-state reading. (2) The stream must be the TEXT layer over a REAL file "
-                 "descriptor: sys.__stdin__, open(...) and os.fdopen(...) all fault, while "
-                 "io.TextIOWrapper(io.BytesIO(...)) (text layer, no fd) and "
-                 "io.BufferedReader(io.FileIO(...)) (fd, no text layer) are both clean. That "
-                 "split suggests the mechanism: PyPy releases the GIL around the real read() "
-                 "syscall, so two threads can be inside TextIOWrapper.__next__ at once and race "
-                 "its decoder/readahead state, where a BytesIO never releases the GIL and a "
-                 "BufferedReader has no text-decoding state to corrupt. If that is right it is a "
-                 "missing lock around the text layer's buffer, and the GIL -- which makes most "
-                 "PyPy threading safe by accident -- is exactly what stops protecting it here. "
+                 "address-space limit and no fuzzer scaffolding. TWO conditions are required. "
+                 "(1) The stream must be the TEXT layer: io.TextIOWrapper over anything faults, "
+                 "while io.BufferedReader(io.FileIO(...)), io.BufferedReader(io.BytesIO(...)), a "
+                 "bare io.BytesIO and a bare io.StringIO are 0/6 at every stream length tried "
+                 "(1, 3, 50, 500 and 5000 lines). (2) The threads must actually EXHAUST the "
+                 "iterator: holding the stream kind fixed, 400 advances over a 5000-line stream "
+                 "is 0/6 and 40000 advances over the same stream is 6/6. "
+                 "A REAL FILE DESCRIPTOR IS NOT REQUIRED -- this catalog said it was until "
+                 "2026-08-28, and that was wrong. The original table compared a 1000-line "
+                 "io.TextIOWrapper(io.BytesIO(...)) against short fd-backed streams at a fixed "
+                 "200 iterations, so the BytesIO row was the only one that never reached EOF and "
+                 "its 0/6 measured the missing exhaustion, not the missing descriptor. Re-run "
+                 "with exhaustion held constant, io.TextIOWrapper(io.BytesIO(...)) faults 6/6. "
+                 "The descriptor does still affect the RATE -- fd-backed streams fault at "
+                 "lengths where BytesIO-backed ones do not -- but not whether it can happen. "
+                 "So the defect is in the text layer's own decoder/readahead state, which two "
+                 "threads can be inside at once with nothing serialising them; the GIL, which "
+                 "makes most PyPy threading safe by accident, does not cover it here. "
                  "Found by --concurrency-stress, a mode whose own generated scripts print "
                  "\"GIL enabled; running serialised\" and which was expected to find deadlocks "
-                 "and re-entrancy rather than anything race-shaped.",
+                 "and re-entrancy rather than anything race-shaped."
+    ),
+    dict(
+        id="PYPY-FUZZ-016", slug="zip-longest-greenkey-null-deref",
+        title="A spent `zip_longest` segfaults any bulk consumer -- `list`, `set`, `sorted`, `min`, `[*z]`",
+        short="`list()` twice on one `zip_longest` segfaults",
+        kind="segv",
+        sites=["pypy/module/itertools/interp_itertools.py:681 "
+               "(W_ZipLongest.iterator_greenkey, the unguarded read)",
+               "pypy/module/itertools/interp_itertools.py:642 "
+               "(W_ZipLongest._fetch, the write that puts None there)"],
+        repro='import itertools\n'
+              'z = itertools.zip_longest([], [1, 2, 3])\n'
+              'next(z)   # arg 0 is exhausted here; z itself is still live\n'
+              'list(z)   # SIGSEGV',
+        repro_file="repro.py",
+        status="reproduced", reliability="12/12 single runs, no threads, no timing dependence "
+                                        "(CPython 3.14.3: 0/12)",
+        needs_rlimit=False,
+        reduced_from="1745-line generated script -> 3 lines",
+        found_by=["fusil, fleet_08 (--concurrency-stress variant), 2 dirs of 229"],
+        defect_class="copied-invariant-broken-in-the-copy",
+        shared_with_cpython=False,
+        cpython_behavior="returns [] -- a spent zip_longest is simply empty",
+        prior_art="Unreported. The tracker has no issue mentioning `iterator_greenkey` and only one "
+                  "unrelated 2014 performance issue (#2104) mentioning zip_longest. Not adjacent to any "
+                  "closed issue in this catalog's set.",
+        leak_signature="Segmentation fault",
+        analysis="`W_ZipLongest._fetch` stores None into `self.iterators_w[i]` when sub-iterator i "
+                 "raises StopIteration while others are still active (interp_itertools.py:642). "
+                 "`W_ZipLongest.iterator_greenkey` then reads `self.iterators_w[0]` and calls a method "
+                 "on it with no None check (line 681), which in translated RPython is a call through a "
+                 "null pointer. `iterator_greenkey` is consulted by the space-level BULK UNPACK path -- "
+                 "`_do_extend_from_iterable` and its set/dict/unicode counterparts -- so it fires for "
+                 "list(), tuple(), set(), frozenset(), dict(), sorted(), min(), list.extend() and [*z], "
+                 "and NOT for a `for` loop, a bare next(), a list comprehension or a generator "
+                 "expression, which go through FOR_ITER instead. That split is the whole diagnosis and "
+                 "it was measured, 16 consumers. "
+                 "The mechanism predicts exactly when it fires, and all seven predictions hold: it needs "
+                 "the FIRST argument to be among the first exhausted, because only then is index 0 the "
+                 "one nulled. zip_longest([1,2,3], range(10)) faults; zip_longest(range(10), [1,2,3]) "
+                 "does not (arg 0 outlives the others, and when `active` finally hits 0 the raise "
+                 "happens BEFORE the assignment); equal lengths fault; a single argument does not "
+                 "(`active` goes 1 -> 0, so the raise pre-empts the nulling); zero arguments do not "
+                 "(len(iterators_w) == 0 short-circuits). "
+                 "It is a copied invariant, not a forgotten guard. The identical method body -- down to "
+                 "the same `XXX in theory we should tupleize` comment -- also sits on W_Map and W_Zip in "
+                 "pypy/module/__builtin__/functional.py, where it is correct, because neither ever "
+                 "stores None into iterators_w; both were verified clean on the same double-consume. "
+                 "`W_ZipLongest.iterator_greenkey` was copied to this class by 6bd66bda3c ('make "
+                 "W_ZipLongest stop subclassing from W_Map as well', 2022-06-11), long after the nulling "
+                 "it invalidates, which has been in `_fetch` since izip_longest was first implemented. "
+                 "The class already knows the entry can be None: `descr_reduce` writes "
+                 "`iterator if iterator is not None else space.newtuple([])` a dozen lines above. "
+                 "By git history the read has been reachable since release-pypy3.9-v7.3.10 (28 release "
+                 "tags); only 7.3.23 was tested. The file is byte-identical between the 7.3.23 tag and "
+                 "main at fe2af5843a (2026-08-18) apart from an unrelated `tee` change, so it is live on "
+                 "main. Fix is a None check at the read, matching what descr_reduce already does.",
     ),
 ]

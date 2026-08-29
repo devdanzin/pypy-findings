@@ -1,0 +1,93 @@
+PYPY-FUZZ-016 — `list()` twice on one `zip_longest` segfaults
+==============================================================================
+
+Captured by scripts/capture_evidence.py. Reliability: 12/12 single runs, no threads, no timing dependence (CPython 3.14.3: 0/12).
+Needs an address-space limit: no.
+
+PyPy    : Python 3.11.15 (194f9f44b505, May 25 2026, 19:34:11) [PyPy 7.3.23 with GCC 10.2.1 20210130 (Red Hat 10.2.1-11)]
+CPython : Python 3.14.3 (main, Mar 3 2026, 14:59:53) [Clang 21.1.4 ]
+Command : <interpreter> -u repro.py
+
+The exit status below is the REPRODUCER DRIVER's, not the finding's. Most drivers exit
+1 when the bug reproduces; the differential-table drivers (PYPY-FUZZ-001/008) exit 0
+when every measured outcome matched what the record documents -- crashes included. Read
+the body, not the status.
+
+------------------------------------------------------------------------------
+PyPy — exit 1 (16.3s)
+------------------------------------------------------------------------------
+pypy 3.11.15
+
+(1) which ARGUMENTS fault -- only when index 0 is among the first exhausted:
+  zip_longest([1,2,3], range(10))        SIGSEGV   (expected SIGSEGV)
+  zip_longest(range(10), [1,2,3])        clean     (expected clean)
+  zip_longest([1,2,3], [4,5,6])          SIGSEGV   (expected SIGSEGV)
+  zip_longest([1,2,3])                   clean     (expected clean)
+  zip_longest([1], range(5), range(9))   SIGSEGV   (expected SIGSEGV)
+  zip_longest(range(9), [1], range(5))   clean     (expected clean)
+  zip_longest()                          clean     (expected clean)
+
+(2) which CONSUMERS fault -- the bulk-unpack path, not FOR_ITER:
+  list                                   SIGSEGV   (expected SIGSEGV)
+  tuple                                  SIGSEGV   (expected SIGSEGV)
+  set                                    SIGSEGV   (expected SIGSEGV)
+  frozenset                              SIGSEGV   (expected SIGSEGV)
+  dict                                   SIGSEGV   (expected SIGSEGV)
+  sorted                                 SIGSEGV   (expected SIGSEGV)
+  min                                    SIGSEGV   (expected SIGSEGV)
+  list.extend                            SIGSEGV   (expected SIGSEGV)
+  [*z]                                   SIGSEGV   (expected SIGSEGV)
+  for loop                               clean     (expected clean)
+  next                                   clean     (expected clean)
+  listcomp                               clean     (expected clean)
+  genexp sum                             clean     (expected clean)
+  join genexp                            clean     (expected clean)
+  repr                                   clean     (expected clean)
+  __reduce__                             clean     (expected clean)
+
+(3) the two SIBLINGS with the byte-identical iterator_greenkey body:
+  itertools.zip_longest                  SIGSEGV   (expected SIGSEGV)
+  builtins.zip                           clean     (expected clean)
+  builtins.map                           clean     (expected clean)
+
+A spent zip_longest segfaults every bulk consumer, and only where the
+iterators_w[0]-is-None mechanism says it should.
+
+------------------------------------------------------------------------------
+CPython — exit 2 (0.6s)
+------------------------------------------------------------------------------
+cpython 3.14.3
+
+(1) which ARGUMENTS fault -- only when index 0 is among the first exhausted:
+  zip_longest([1,2,3], range(10))        clean     (expected SIGSEGV)   <-- NOT AS DOCUMENTED
+  zip_longest(range(10), [1,2,3])        clean     (expected clean)
+  zip_longest([1,2,3], [4,5,6])          clean     (expected SIGSEGV)   <-- NOT AS DOCUMENTED
+  zip_longest([1,2,3])                   clean     (expected clean)
+  zip_longest([1], range(5), range(9))   clean     (expected SIGSEGV)   <-- NOT AS DOCUMENTED
+  zip_longest(range(9), [1], range(5))   clean     (expected clean)
+  zip_longest()                          clean     (expected clean)
+
+(2) which CONSUMERS fault -- the bulk-unpack path, not FOR_ITER:
+  list                                   clean     (expected SIGSEGV)   <-- NOT AS DOCUMENTED
+  tuple                                  clean     (expected SIGSEGV)   <-- NOT AS DOCUMENTED
+  set                                    clean     (expected SIGSEGV)   <-- NOT AS DOCUMENTED
+  frozenset                              clean     (expected SIGSEGV)   <-- NOT AS DOCUMENTED
+  dict                                   clean     (expected SIGSEGV)   <-- NOT AS DOCUMENTED
+  sorted                                 clean     (expected SIGSEGV)   <-- NOT AS DOCUMENTED
+  min                                    clean     (expected SIGSEGV)   <-- NOT AS DOCUMENTED
+  list.extend                            clean     (expected SIGSEGV)   <-- NOT AS DOCUMENTED
+  [*z]                                   clean     (expected SIGSEGV)   <-- NOT AS DOCUMENTED
+  for loop                               clean     (expected clean)
+  next                                   clean     (expected clean)
+  listcomp                               clean     (expected clean)
+  genexp sum                             clean     (expected clean)
+  join genexp                            clean     (expected clean)
+  repr                                   clean     (expected clean)
+  __reduce__                             clean     (expected clean)
+
+(3) the two SIBLINGS with the byte-identical iterator_greenkey body:
+  itertools.zip_longest                  clean     (expected SIGSEGV)   <-- NOT AS DOCUMENTED
+  builtins.zip                           clean     (expected clean)
+  builtins.map                           clean     (expected clean)
+
+13 case(s) did not match the record -- the analysis needs revisiting.

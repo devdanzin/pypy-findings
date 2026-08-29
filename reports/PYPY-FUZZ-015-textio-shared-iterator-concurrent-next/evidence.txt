@@ -1,7 +1,7 @@
-PYPY-FUZZ-015 — concurrent next() on a shared file iterator
+PYPY-FUZZ-015 — concurrent next() on a shared text-stream iterator
 ==============================================================================
 
-Captured by scripts/capture_evidence.py. Reliability: 3-6/6 depending on stream and machine load; a race, so the driver reports a rate. Two threads suffice.
+Captured by scripts/capture_evidence.py. Reliability: a race, so a rate rather than a verdict, and the rate depends almost entirely on how fast the stream reaches EOF. Driven to exhaustion it is 6/6 on both a real file and a BytesIO-backed text layer; left unexhausted it is 0/6 on either. The shipped table reports every cell. Wrapped in 20 rounds the minimal form is 6/6 (CPython 0/6); the 335-line reduction is 11/12 single runs. Two threads suffice; one thread is 0/6.
 Needs an address-space limit: no.
 
 PyPy    : Python 3.11.15 (194f9f44b505, May 25 2026, 19:34:11) [PyPy 7.3.23 with GCC 10.2.1 20210130 (Red Hat 10.2.1-11)]
@@ -14,47 +14,55 @@ when every measured outcome matched what the record documents -- crashes include
 the body, not the status.
 
 ------------------------------------------------------------------------------
-PyPy — exit 1 (48.8s)
+PyPy — exit 1 (71.5s)
 ------------------------------------------------------------------------------
 pypy 3.11.15
 
-stream                         expected   SIGSEGV
--------------------------------------------------
-sys.__stdin__                  yes        6/6
-open("/dev/null")              yes        6/6
-open(<1-line file>)            yes        6/6
-os.fdopen(os.open(...))        yes        6/6
-TextIOWrapper(BytesIO)         no         0/6
-BufferedReader(FileIO)         no         0/6
+(1) the TEXT LAYER is what matters -- SIGSEGV rate out of 6, 2 threads, 200 iters
+stream                         1 ln    3 ln   50 ln  500 ln 5000 ln
+-------------------------------------------------------------------
+TextIOWrapper(BytesIO)          6/6     0/6     6/6     0/6     0/6
+open(<file>)                    6/6     6/6     6/6     0/6     0/6
+BufferedReader(BytesIO)         0/6     0/6     0/6     0/6     0/6
+BufferedReader(FileIO)          0/6     0/6     0/6     0/6     0/6
+BytesIO                         0/6     0/6     0/6     0/6     0/6
+StringIO                        0/6     0/6     0/6     0/6     0/6
 
-thread count, on open("/dev/null"):
-  2 threads -> 4/4
-  3 threads -> 4/4
-  4 threads -> 4/4
-  8 threads -> 4/4
+(2) EXHAUSTION, with the stream kind held fixed (5000 lines):
+  TextIOWrapper(BytesIO)     400 advances 0/6   40000 advances 6/6
+  open(<file>)               400 advances 0/6   40000 advances 6/6
 
-Concurrent next() on one file iterator faults. It needs BOTH the text layer
-and a real file descriptor: neither half alone reproduces it.
+(3) thread count, on TextIOWrapper(BytesIO) over a 1-line stream:
+  1 thread(s) -> 0/6
+  2 thread(s) -> 6/6
+  4 thread(s) -> 6/6
+
+Concurrent next() on one TEXT-stream iterator faults at EOF. Only the
+io.TextIOWrapper rows fault; a real file descriptor is NOT required.
 
 ------------------------------------------------------------------------------
-CPython — exit 0 (1.6s)
+CPython — exit 0 (6.0s)
 ------------------------------------------------------------------------------
 cpython 3.14.3
 
-stream                         expected   SIGSEGV
--------------------------------------------------
-sys.__stdin__                  yes        0/6
-open("/dev/null")              yes        0/6
-open(<1-line file>)            yes        0/6
-os.fdopen(os.open(...))        yes        0/6
-TextIOWrapper(BytesIO)         no         0/6
-BufferedReader(FileIO)         no         0/6
+(1) the TEXT LAYER is what matters -- SIGSEGV rate out of 6, 2 threads, 200 iters
+stream                         1 ln    3 ln   50 ln  500 ln 5000 ln
+-------------------------------------------------------------------
+TextIOWrapper(BytesIO)          0/6     0/6     0/6     0/6     0/6
+open(<file>)                    0/6     0/6     0/6     0/6     0/6
+BufferedReader(BytesIO)         0/6     0/6     0/6     0/6     0/6
+BufferedReader(FileIO)          0/6     0/6     0/6     0/6     0/6
+BytesIO                         0/6     0/6     0/6     0/6     0/6
+StringIO                        0/6     0/6     0/6     0/6     0/6
 
-thread count, on open("/dev/null"):
-  2 threads -> 0/4
-  3 threads -> 0/4
-  4 threads -> 0/4
-  8 threads -> 0/4
+(2) EXHAUSTION, with the stream kind held fixed (5000 lines):
+  TextIOWrapper(BytesIO)     400 advances 0/6   40000 advances 0/6
+  open(<file>)               400 advances 0/6   40000 advances 0/6
 
-No faults. On CPython this is the expected result -- concurrent iteration there is
-unspecified but does not crash.
+(3) thread count, on TextIOWrapper(BytesIO) over a 1-line stream:
+  1 thread(s) -> 0/6
+  2 thread(s) -> 0/6
+  4 thread(s) -> 0/6
+
+No faults. On CPython this is the expected result -- concurrent iteration there
+is unspecified but does not crash.

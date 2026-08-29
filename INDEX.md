@@ -2,7 +2,7 @@
 
 > Generated from `records.py` by `scripts/regen_derived.py`. Do not hand-edit.
 
-15 findings, all reproduced on PyPy 7.3.23 (194f9f44b505, Python 3.11.15), with CPython 3.14.3 as the differential oracle.
+16 findings, all reproduced on PyPy 7.3.23 (194f9f44b505, Python 3.11.15), with CPython 3.14.3 as the differential oracle.
 
 | id | kind | short title | reliability | reduced from |
 |---|---|---|---|---|
@@ -20,10 +20,12 @@
 | [`PYPY-FUZZ-012`](reports/PYPY-FUZZ-012-format-syntaxerror-non-utf8-checkerror/report.md) | SystemError leak | formatting a SyntaxError leaks CheckError | deterministic (6/6 rows on PyPy, 0/6 on CPython) | 12748-line generated script -> 752 -> 53 lines -> 2 bytes |
 | [`PYPY-FUZZ-013`](reports/PYPY-FUZZ-013-io-bufferedrwpair-uninitialized-segv/report.md) | SIGSEGV | uninitialized `BufferedRWPair` | deterministic | 27 fleet dirs, all one signature -> 1 line |
 | [`PYPY-FUZZ-014`](reports/PYPY-FUZZ-014-hashlib-hmac-block-size-null-ctx/report.md) | SIGSEGV | `HMAC.block_size` on a NULL ctx | deterministic (4/4 failing-construction cases) | 13 fleet dirs, all one signature -> 4 lines |
-| [`PYPY-FUZZ-015`](reports/PYPY-FUZZ-015-textio-shared-iterator-concurrent-next/report.md) | SIGSEGV | concurrent next() on a shared file iterator | a race, so a rate rather than a verdict. Minimal 2-thread form: 3-6/6 single runs depending on stream and machine load; wrapped in 20 rounds it is 6/6 (CPython 0/6). The 335-line reduction is 11/12 single runs. Two threads suffice; one thread is 0/4 | 1739-line generated script -> 335 lines (10/10) -> ~10 lines by hand |
+| [`PYPY-FUZZ-015`](reports/PYPY-FUZZ-015-textio-shared-iterator-concurrent-next/report.md) | SIGSEGV | concurrent next() on a shared text-stream iterator | a race, so a rate rather than a verdict, and the rate depends almost entirely on how fast the stream reaches EOF. Driven to exhaustion it is 6/6 on both a real file and a BytesIO-backed text layer; left unexhausted it is 0/6 on either. The shipped table reports every cell. Wrapped in 20 rounds the minimal form is 6/6 (CPython 0/6); the 335-line reduction is 11/12 single runs. Two threads suffice; one thread is 0/6 | 1739-line generated script -> 335 lines (10/10) -> ~10 lines by hand |
+| [`PYPY-FUZZ-016`](reports/PYPY-FUZZ-016-zip-longest-greenkey-null-deref/report.md) | SIGSEGV | `list()` twice on one `zip_longest` segfaults | 12/12 single runs, no threads, no timing dependence (CPython 3.14.3: 0/12) | 1745-line generated script -> 3 lines |
 
 ## By defect class
 
+- **`copied-invariant-broken-in-the-copy`** (1) — `PYPY-FUZZ-016`
 - **`crash-after-fork-from-thread`** (1) — `PYPY-FUZZ-010`
 - **`crash-instead-of-clean-failure-at-allocation-limit`** (3) — `PYPY-FUZZ-006`, `PYPY-FUZZ-007`, `PYPY-FUZZ-009`
 - **`dangling-pointer-after-free`** (1) — `PYPY-FUZZ-004`

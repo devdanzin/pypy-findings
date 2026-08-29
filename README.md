@@ -11,7 +11,7 @@ overlap, both records say so.
 
 ## The findings
 
-**15 findings, all reproduced.** [**INDEX.md**](INDEX.md) is the table;
+**16 findings, all reproduced.** [**INDEX.md**](INDEX.md) is the table;
 [`catalog/known_bugs.tsv`](catalog/known_bugs.tsv) is the machine-readable form.
 
 Reproduced on **PyPy 7.3.23** (`194f9f44b505`, Python 3.11.15), with **CPython 3.14.3** as the
@@ -34,8 +34,12 @@ Highlights:
   limit: PyPy's intended clean `out of memory` abort, a SIGSEGV, and glibc reporting heap
   corruption. Only the first is correct.
 - **`PYPY-FUZZ-015`** — two threads sharing `for line in f` segfault at EOF. Ordinary code,
-  no fuzzer scaffolding. It needs the text layer *and* a real file descriptor: neither
-  `TextIOWrapper(BytesIO)` nor `BufferedReader(FileIO)` reproduces it alone.
+  no fuzzer scaffolding. It needs the text layer and it needs to reach EOF; every
+  `BufferedReader`, `BytesIO` and `StringIO` variant is clean at five stream lengths.
+- **`PYPY-FUZZ-016`** — `list(z)` twice on one `itertools.zip_longest` segfaults. Three lines,
+  no threads, 12/12. A retired sub-iterator is stored as `None` and read back unguarded by a
+  method copied from `map`/`zip`, where that can never happen — so `list`, `set`, `sorted`,
+  `min` and `[*z]` fault while a plain `for` loop over the same object is fine.
 
 ## The recurring shape
 
@@ -53,6 +57,12 @@ omissions rather than design choices:
 
 That is a better ask of maintainers than four one-line patches: a systematic audit of which
 members check the sentinel state and which do not would likely find more.
+
+`PYPY-FUZZ-016` is the mirror image and worth stating separately: there the method was
+*copied* from two siblings where it is correct (`map` and `zip` never retire a sub-iterator),
+into a class that does retire them. Nobody omitted a guard; an invariant was carried across a
+copy that does not hold on the far side. Both shapes point at the same audit, from opposite
+directions.
 
 ## Fixes that did not propagate
 
@@ -89,6 +99,20 @@ edits to the reproducer file. On one of them, adding a docstring moved the windo
 `reliability` field records the measured rate for every finding rather than a bare
 "reproduced".
 
+## A correction, kept in the open
+
+`PYPY-FUZZ-015` claimed until 2026-08-28 that the crash required "the text layer over a **real
+file descriptor**", and built a mechanism on it. The descriptor half was wrong. The row it
+rested on — `TextIOWrapper(BytesIO)` measuring 0/6 — used a 1000-line stream while every case
+it was compared against was short, at a fixed iteration count, so it was the only row that
+never reached EOF: its 0/6 measured the missing exhaustion, not the missing descriptor. Held
+constant, it faults 6/6.
+
+The reproducer now sweeps stream length as well as stream kind, which is what the original
+comparison should have done, and the record says what changed and why. The text-layer half
+survived the re-test and is stronger for it — four non-text stream kinds are 0/6 at every
+length.
+
 ## How records are maintained
 
 `scripts/records.py` is the single source of truth. `meta.json`, `report.md`, `INDEX.md` and
@@ -101,7 +125,7 @@ See [`MINTING.md`](MINTING.md) for what earns an id.
 
 ## Status
 
-**None of these 15 are filed upstream.** All of them are mirrored as rows in
+**None of these 16 are filed upstream.** All of them are mirrored as rows in
 `pypy-review-toolkit`'s `pypy_known_bugs.tsv`, so its `known-issues` command can
 cross-reference them against scanner output. `005` is additionally pinned to a source line by
 `pypy-review-findings` as `PYPYR-0001`, with `PYPYR-0002` recording a second route to the same
