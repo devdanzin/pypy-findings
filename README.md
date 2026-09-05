@@ -125,8 +125,17 @@ See [`MINTING.md`](MINTING.md) for what earns an id.
 
 ## Status
 
-**None of these 16 are filed upstream.** All sixteen are mirrored as rows in
-`pypy-review-toolkit`'s `pypy_known_bugs.tsv`, so its `known-issues` command can
-cross-reference them against scanner output. `005` is additionally pinned to a source line by
+**One of the sixteen is filed, and it is fixed.** `PYPY-FUZZ-015` was filed from this
+catalog's draft as [pypy#5575](https://github.com/pypy/pypy/issues/5575) on 2026-08-30 and
+fixed the next day by `134c9809c4`, *"add a lock for textio"*. The other fifteen are unfiled.
+
+That fix is also the best evidence available for the correction below: it landed in
+`pypy/module/_io/interp_textio.py` — the **text layer** — which is what the corrected mechanism
+predicted, and not where the retracted "GIL released around the real `read()` syscall" reading
+would have pointed. The issue was filed from the pre-correction draft, so the *reproducer*
+carried it; the explanation was wrong and the maintainer found the right place anyway.
+
+All sixteen are mirrored as rows in `pypy-review-toolkit`'s `pypy_known_bugs.tsv`, so its
+`known-issues` command can cross-reference them against scanner output. `005` is additionally pinned to a source line by
 `pypy-review-findings` as `PYPYR-0001`, with `PYPYR-0002` recording a second route to the same
 site that this catalog's reproducer does not exercise.

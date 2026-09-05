@@ -449,7 +449,7 @@ RECORDS = [
         shared_with_cpython=False,
         cpython_behavior="does not crash; concurrent iteration is unspecified there but raises "
                          "or returns interleaved lines",
-        prior_art="Unreported.",
+        prior_art="FILED AND FIXED UPSTREAM as pypy#5575 (opened 2026-08-30 by BHUVANSH855 from this catalog's draft, closed 2026-08-31), fixed by 134c9809c4 \"add a lock for textio\". The fix landed in pypy/module/_io/interp_textio.py -- the TEXT LAYER -- which independently confirms the corrected mechanism below and refutes the one this record originally carried: the retracted \"GIL released around the real read() syscall\" reading would have put the defect in the buffered/fd layer instead. Note the issue was filed from the PRE-correction draft (its title still says \"file iterator\"), so the reproducer carried it, not the explanation. No tracker issue covered concurrent text-stream iteration before this one; #2531 is 2017-era requests/eventlet on PyPy 5.x, unrelated.",
         leak_signature="Segmentation fault",
         analysis="Ordinary code -- `for line in f` shared between threads -- with no ctypes, no "
                  "address-space limit and no fuzzer scaffolding. TWO conditions are required. "
