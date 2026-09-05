@@ -190,15 +190,15 @@ RECORDS = [
         kind="segv",
         sites=["lib/pypy3.11/multiprocessing/pool.py:314 (_repopulate_pool_static)",
                "lib/pypy3.11/multiprocessing/pool.py:183 (Pool.__init__)"],
-        repro="see repro.py -- allocate ballast under RLIMIT_AS, then ThreadPool()",
+        repro="`multiprocessing.dummy.Pool()` under `ulimit -v 524288` (512 MiB) -- no ballast needed",
         repro_file="repro.py",
-        status="reproduced", reliability="sweeps; 6-7/10 at the right ballast, 0/10 one step either side",
+        status="reproduced", reliability="6/8 at `ulimit -v 524288` with no ballast; via ballast, sweeps 6-7/10 at the right size and 0/10 one step either side",
         needs_rlimit=True,
         reduced_from="22249-line generated script -> 4 lines",
-        found_by=["fusil, fleet_03 (broad stdlib)"],
+        found_by=["fusil, fleet_03 (broad stdlib)", "fusil, fleet_10 (broad stdlib) -- reproduced from a bare call"],
         defect_class="crash-instead-of-clean-failure-at-allocation-limit",
         shared_with_cpython=False,
-        cpython_behavior="raises cleanly under an identical limit and ballast (0/10)",
+        cpython_behavior="raises `RuntimeError: can't start new thread` cleanly -- 6/6 at EVERY limit from 1024 MiB down to 128 MiB (CPython 3.14.3), and 0/10 under an identical limit and ballast. Never segfaults.",
         prior_art="Unreported. NOT seeded in the toolkit catalog (added to the report after hand-over). "
                   "The single highest-volume signature of the whole campaign: 13 of 58 kept dirs in one fleet "
                   "and 5 in another, across every instance.",
@@ -210,7 +210,22 @@ RECORDS = [
                  "not enough to finish -- and the band moves between machines AND between edits of the "
                  "reproducer file itself: adding a docstring moved it by 150 MiB. A self-calibrating variant "
                  "(fill, then release fixed headroom) does NOT reproduce it, so the ballast is not merely a "
-                 "proxy for 'nearly full'. Hence the sweep.",
+                 "proxy for 'nearly full'. Hence the sweep.\n\n"
+                 "fleet_10 (2026-09-05) sharpened this. The ballast is NOT required: a bare "
+                 "`multiprocessing.dummy.Pool()` under `ulimit -v 524288` segfaults 6/8 on its own, because "
+                 "the interpreter's own startup already puts it in the band. An RLIMIT_AS sweep of that bare "
+                 "call, 6 runs each: unlimited / 3072 / 2048 / 1536 MiB all clean; 1024 and 768 MiB give "
+                 "`can't start new thread` 6/6; 512 MiB gives 4 SEGV + 2 clean. Three further facts:\n"
+                 "  * The fault is UNCATCHABLE. Wrapping the call in `try/except BaseException`, 6 of 8 runs "
+                 "never reach the handler and never print, so this is a hard SIGSEGV inside construction -- "
+                 "not an exception, and not a `__del__`/teardown problem.\n"
+                 "  * It is NOT PyPy thread bootstrap in general. Starting 4096 live threads until exhaustion "
+                 "raises `can't start new thread` cleanly on BOTH PyPy and CPython, so the defect is specific "
+                 "to the pool-construction path (`_repopulate_pool_static`'s `w.start()` loop).\n"
+                 "  * The band's position relative to a fuzzing run's own limit is NOT stable: here it sits "
+                 "well BELOW the fleet's 3072 MiB (which is why 60 straight replays in fleet_08 found nothing), "
+                 "while in fleet_09's `--concurrency-stress` configuration it sat ABOVE it. Sweep; never assume "
+                 "a direction.",
     ),
     dict(
         id="PYPY-FUZZ-008", slug="compile-bytes-number-out-of-range-keyerror",
